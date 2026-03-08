@@ -22,7 +22,6 @@ interface ActionButton {
   icon: React.ComponentType<{ className?: string }>;
   color: "emerald" | "blue" | "yellow" | "red";
   action: () => Promise<void> | void;
-  placeholder?: boolean;
 }
 
 export function QuickActions({ onActionComplete }: QuickActionsProps) {
@@ -38,9 +37,34 @@ export function QuickActions({ onActionComplete }: QuickActionsProps) {
     setTimeout(() => setNotification(null), 3000);
   };
 
+  const runAction = async (action: string) => {
+    const res = await fetch("/api/actions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action }),
+    });
+
+    if (!res.ok) {
+      throw new Error(`Failed action: ${action}`);
+    }
+
+    return res.json() as Promise<{ output?: string; status?: string }>;
+  };
+
   const handleRestartGateway = async () => {
-    // Placeholder - would call openclaw gateway restart
-    showNotification("success", "Gateway restart command sent (placeholder)");
+    setLoadingAction("restart");
+    try {
+      const result = await runAction("restart-gateway");
+      showNotification(
+        "success",
+        result?.status === "success" ? "Gateway restarted" : "Gateway restart requested"
+      );
+      onActionComplete?.();
+    } catch {
+      showNotification("error", "Failed to restart gateway");
+    } finally {
+      setLoadingAction(null);
+    }
   };
 
   const handleClearActivityLog = async () => {
@@ -64,8 +88,16 @@ export function QuickActions({ onActionComplete }: QuickActionsProps) {
   };
 
   const handleViewLogs = async () => {
-    // Placeholder - would open gateway logs
-    showNotification("success", "Opening gateway logs... (placeholder)");
+    setLoadingAction("view_logs");
+    try {
+      await runAction("gateway-logs");
+      showNotification("success", "Gateway logs fetched in backend action log");
+      onActionComplete?.();
+    } catch {
+      showNotification("error", "Failed to fetch gateway logs");
+    } finally {
+      setLoadingAction(null);
+    }
   };
 
   const actions: ActionButton[] = [
@@ -75,7 +107,6 @@ export function QuickActions({ onActionComplete }: QuickActionsProps) {
       icon: RefreshCw,
       color: "blue",
       action: handleRestartGateway,
-      placeholder: true,
     },
     {
       id: "clear_log",
@@ -90,7 +121,6 @@ export function QuickActions({ onActionComplete }: QuickActionsProps) {
       icon: FileText,
       color: "emerald",
       action: handleViewLogs,
-      placeholder: true,
     },
     {
       id: "change_password",
@@ -156,9 +186,6 @@ export function QuickActions({ onActionComplete }: QuickActionsProps) {
                   <Icon className="w-4 h-4" />
                 )}
                 <span className="font-medium">{action.label}</span>
-                {action.placeholder && (
-                  <span className="text-xs opacity-50">(placeholder)</span>
-                )}
               </button>
             );
           })}

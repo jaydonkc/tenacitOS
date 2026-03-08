@@ -61,7 +61,7 @@ A real-time dashboard and control center for [OpenClaw](https://openclaw.ai) AI 
 TenacitOS reads directly from your OpenClaw installation:
 
 ```
-/root/.openclaw/              ← OPENCLAW_DIR (configurable)
+/home/node/.openclaw/         ← OPENCLAW_DIR (configurable)
 ├── openclaw.json             ← agents list, channels, models config
 ├── workspace/                ← main agent workspace (MEMORY.md, SOUL.md, etc.)
 ├── workspace-studio/         ← sub-agent workspaces
@@ -79,7 +79,7 @@ The app uses `OPENCLAW_DIR` to locate `openclaw.json` and all workspaces. **No m
 ### 1. Clone into your OpenClaw workspace
 
 ```bash
-cd /root/.openclaw/workspace   # or your OPENCLAW_DIR/workspace
+cd /home/node/.openclaw/workspace   # or your OPENCLAW_DIR/workspace
 git clone https://github.com/carlosazaustre/tenacitOS.git mission-control
 cd mission-control
 npm install
@@ -103,7 +103,7 @@ ADMIN_PASSWORD=your-secure-password-here
 AUTH_SECRET=your-random-32-char-secret-here
 
 # --- OpenClaw paths (optional — defaults work for standard installs) ---
-# OPENCLAW_DIR=/root/.openclaw
+# OPENCLAW_DIR=/home/node/.openclaw
 
 # --- Branding (customize for your instance) ---
 NEXT_PUBLIC_AGENT_NAME=Mission Control
@@ -120,7 +120,28 @@ NEXT_PUBLIC_COMPANY_NAME=MISSION CONTROL, INC.
 NEXT_PUBLIC_APP_TITLE=Mission Control
 ```
 
-> **Tip:** `OPENCLAW_DIR` defaults to `/root/.openclaw`. If your OpenClaw is installed elsewhere, set this variable.
+> **Tip:** `OPENCLAW_DIR` defaults to `/home/node/.openclaw`. If your OpenClaw is installed elsewhere, set this variable.
+
+### Jaydon stack integration (OpenClaw + Docker + Ollama + agent-comms)
+
+Set these in `.env.local` when running on Jaydon's stack:
+
+```env
+OPENCLAW_DIR=/home/node/.openclaw
+OPENCLAW_WORKSPACE=/home/node/.openclaw/workspace
+OPENCLAW_GATEWAY_URL=http://127.0.0.1:18789
+# Optional if gateway auth enabled
+OPENCLAW_GATEWAY_TOKEN=
+
+OLLAMA_BASE_URL=http://127.0.0.1:11434
+# Optional external or local health URL for your agent communication service
+AGENT_COMMS_HEALTH_URL=http://127.0.0.1:8787/health
+```
+
+Health hooks are available at:
+
+- `GET /api/integrations/health` (gateway + Docker + Ollama + optional agent-comms)
+- `POST /api/actions` with actions: `gateway-health`, `check-docker`, `check-ollama`, `check-agent-comms`, `gateway-logs`
 
 ### 3. Initialize data files
 
@@ -156,6 +177,21 @@ npm start
 
 Login at `http://localhost:3000` with the `ADMIN_PASSWORD` you set.
 
+### 6. Run with Docker (optional)
+
+```bash
+# Build + run TenacitOS container
+docker compose up -d --build
+
+# With bundled Ollama service profile
+docker compose --profile ollama up -d --build
+
+# Logs
+docker compose logs -f tenacitos
+```
+
+The compose file mounts `/home/node/.openclaw` read-only so TenacitOS can inspect OpenClaw safely.
+
 ---
 
 ## Production Deployment
@@ -182,7 +218,7 @@ After=network.target
 [Service]
 Type=simple
 User=root
-WorkingDirectory=/root/.openclaw/workspace/mission-control
+WorkingDirectory=/home/node/.openclaw/workspace/mission-control
 ExecStart=/usr/bin/npm start
 Restart=always
 RestartSec=10

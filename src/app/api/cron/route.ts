@@ -3,7 +3,7 @@ import { execSync } from "child_process";
 
 function getGatewayConfig() {
   try {
-    const configRaw = require("fs").readFileSync((process.env.OPENCLAW_DIR || "/root/.openclaw") + "/openclaw.json", "utf-8");
+    const configRaw = require("fs").readFileSync((process.env.OPENCLAW_DIR || "/home/node/.openclaw") + "/openclaw.json", "utf-8");
     const config = JSON.parse(configRaw);
     return {
       token: config.gateway?.auth?.token || "",

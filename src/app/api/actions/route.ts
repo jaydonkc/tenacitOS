@@ -10,7 +10,12 @@ import { logActivity } from '@/lib/activities-db';
 
 const execAsync = promisify(exec);
 
-const WORKSPACE = process.env.OPENCLAW_DIR ? `${process.env.OPENCLAW_DIR}/workspace` : '/root/.openclaw/workspace';
+const OPENCLAW_DIR = process.env.OPENCLAW_DIR || '/home/node/.openclaw';
+const WORKSPACE = process.env.OPENCLAW_WORKSPACE || `${OPENCLAW_DIR}/workspace`;
+const OPENCLAW_GATEWAY_URL = process.env.OPENCLAW_GATEWAY_URL || 'http://127.0.0.1:18789';
+const OPENCLAW_GATEWAY_TOKEN = process.env.OPENCLAW_GATEWAY_TOKEN || '';
+const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || 'http://127.0.0.1:11434';
+const AGENT_COMMS_HEALTH_URL = process.env.AGENT_COMMS_HEALTH_URL || '';
 
 interface ActionResult {
   action: string;
@@ -48,13 +53,48 @@ async function runAction(action: string): Promise<ActionResult> {
       }
 
       case 'restart-gateway': {
-        const { stdout, stderr } = await execAsync('systemctl restart openclaw-gateway 2>&1 || echo "Service not found"');
+        const { stdout, stderr } = await execAsync('openclaw gateway restart 2>&1 || systemctl restart openclaw-gateway 2>&1 || echo "Gateway restart command failed"');
         output = stdout || stderr || 'Restart command executed';
         // Also check status
         try {
-          const { stdout: status } = await execAsync('systemctl is-active openclaw-gateway 2>&1 || echo "unknown"');
+          const { stdout: status } = await execAsync('openclaw gateway status 2>&1 || systemctl is-active openclaw-gateway 2>&1 || echo "unknown"');
           output += `\nStatus: ${status.trim()}`;
         } catch {}
+        break;
+      }
+
+      case 'check-docker': {
+        const { stdout, stderr } = await execAsync('docker ps --format "table {{.Names}}\t{{.Status}}" 2>&1 || echo "Docker not available"');
+        output = stdout || stderr || 'Docker check completed';
+        break;
+      }
+
+      case 'check-ollama': {
+        const { stdout, stderr } = await execAsync(`curl -sS --max-time 5 "${OLLAMA_BASE_URL}/api/tags" 2>&1 || echo "Ollama not reachable at ${OLLAMA_BASE_URL}"`);
+        output = stdout || stderr || 'Ollama check completed';
+        break;
+      }
+
+      case 'check-agent-comms': {
+        if (!AGENT_COMMS_HEALTH_URL) {
+          output = 'AGENT_COMMS_HEALTH_URL is not configured';
+          break;
+        }
+        const { stdout, stderr } = await execAsync(`curl -sS --max-time 5 "${AGENT_COMMS_HEALTH_URL}" 2>&1 || echo "Agent comms endpoint unreachable"`);
+        output = stdout || stderr || 'Agent comms check completed';
+        break;
+      }
+
+      case 'gateway-health': {
+        const authHeader = OPENCLAW_GATEWAY_TOKEN ? `-H "Authorization: Bearer ${OPENCLAW_GATEWAY_TOKEN}"` : '';
+        const { stdout, stderr } = await execAsync(`curl -sS --max-time 5 ${authHeader} "${OPENCLAW_GATEWAY_URL}/health" 2>&1 || echo "OpenClaw gateway unreachable at ${OPENCLAW_GATEWAY_URL}"`);
+        output = stdout || stderr || 'Gateway health check completed';
+        break;
+      }
+
+      case 'gateway-logs': {
+        const { stdout, stderr } = await execAsync('journalctl -u openclaw-gateway -n 120 --no-pager 2>&1 || echo "Gateway logs unavailable (systemd/journalctl missing)"');
+        output = stdout || stderr || 'No gateway logs';
         break;
       }
 
@@ -146,7 +186,19 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Missing action' }, { status: 400 });
     }
 
-    const validActions = ['git-status', 'restart-gateway', 'clear-temp', 'usage-stats', 'heartbeat', 'npm-audit'];
+    const validActions = [
+      'git-status',
+      'restart-gateway',
+      'gateway-health',
+      'gateway-logs',
+      'check-docker',
+      'check-ollama',
+      'check-agent-comms',
+      'clear-temp',
+      'usage-stats',
+      'heartbeat',
+      'npm-audit',
+    ];
     if (!validActions.includes(action)) {
       return NextResponse.json({ error: `Unknown action. Valid: ${validActions.join(', ')}` }, { status: 400 });
     }

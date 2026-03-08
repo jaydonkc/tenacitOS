@@ -1,0 +1,33 @@
+version: "3.9"
+
+services:
+  tenacitos:
+    build: .
+    container_name: tenacitos
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env.local
+    volumes:
+      - /home/node/.openclaw:/home/node/.openclaw:ro
+      - ./data:/app/data
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+
+  # Optional: enable if Ollama should run in this compose stack.
+  ollama:
+    image: ollama/ollama:latest
+    profiles: ["ollama"]
+    container_name: ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama:/root/.ollama
+
+volumes:
+  ollama:
