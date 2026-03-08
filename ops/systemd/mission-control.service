@@ -1,0 +1,21 @@
+[Unit]
+Description=Mission Control Dashboard
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=jaydonkc
+Group=jaydonkc
+WorkingDirectory=/home/jaydonkc/newdash/tenacitOS
+Environment=NODE_ENV=production
+Environment=PATH=/home/jaydonkc/.nvm/versions/node/v22.19.0/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin
+ExecStart=/home/jaydonkc/.nvm/versions/node/v22.19.0/bin/npm start
+Restart=always
+RestartSec=5
+KillSignal=SIGINT
+TimeoutStopSec=30
+SyslogIdentifier=mission-control
+
+[Install]
+WantedBy=multi-user.target

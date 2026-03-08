@@ -419,7 +419,10 @@ export default function SystemMonitorPage() {
                 </thead>
                 <tbody>
                   {systemData.systemd.map((svc) => {
-                    const isActionable = svc.backend === "pm2" || svc.backend === "systemd";
+                    const isActionable =
+                      svc.backend === "pm2" ||
+                      svc.backend === "systemd" ||
+                      svc.backend === "systemd-user";
                     const statusStyles = getStatusStyles(svc.status);
                     const restartKey = `${svc.backend || "pm2"}:${svc.name}-restart`;
                     const stopKey = `${svc.backend || "pm2"}:${svc.name}-stop`;

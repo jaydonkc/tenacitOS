@@ -3,9 +3,9 @@ import { exec } from "child_process";
 import { promisify } from "util";
 import os from "os";
 
-const execAsync = promisify(exec);
+import { getManagedServiceEntries } from "@/lib/service-runtime";
 
-const SYSTEMD_SERVICES = ["mission-control", "content-vault", "classvault", "creatoros"];
+const execAsync = promisify(exec);
 
 export async function GET() {
   try {
@@ -35,17 +35,13 @@ export async function GET() {
       console.error("Failed to get disk stats:", error);
     }
 
-    // Systemd Services (count active ones)
-    let activeServices = 0;
-    let totalServices = SYSTEMD_SERVICES.length;
-    try {
-      for (const name of SYSTEMD_SERVICES) {
-        const { stdout } = await execAsync(`systemctl is-active ${name} 2>/dev/null || true`);
-        if (stdout.trim() === "active") activeServices++;
-      }
-    } catch (error) {
-      console.error("Failed to get systemd stats:", error);
-    }
+    const managedServices = await getManagedServiceEntries();
+    const activeServices = managedServices.filter(
+      (service) => service.status === "active"
+    ).length;
+    const totalServices = managedServices.filter(
+      (service) => service.backend !== "none"
+    ).length;
 
     // Tailscale VPN Status
     let vpnActive = false;

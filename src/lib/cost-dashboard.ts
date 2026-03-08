@@ -1,65 +1,7 @@
-import fs from "fs";
-import path from "path";
-import readline from "readline";
-import { OPENCLAW_AGENTS_DIR } from "./openclaw-runtime";
-import { calculateCost, normalizeModelId } from "./pricing";
+import { getPersistedUsageEvents, syncUsageLedger, type UsageEvent } from "./usage-ledger";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const HOUR_MS = 60 * 60 * 1000;
-const TRANSCRIPT_FILE_PATTERN = /\.jsonl$/;
-
-interface UsageCostBreakdown {
-  input?: number;
-  output?: number;
-  cacheRead?: number;
-  cacheWrite?: number;
-  total?: number;
-}
-
-interface UsagePayload {
-  input?: number;
-  output?: number;
-  cacheRead?: number;
-  cacheWrite?: number;
-  totalTokens?: number;
-  cost?: UsageCostBreakdown;
-}
-
-interface TranscriptMessage {
-  role?: string;
-  provider?: string;
-  model?: string;
-  usage?: UsagePayload;
-  timestamp?: unknown;
-}
-
-interface TranscriptRecord {
-  type?: string;
-  timestamp?: unknown;
-  provider?: string;
-  model?: string;
-  usage?: UsagePayload;
-  message?: TranscriptMessage;
-}
-
-interface TranscriptFileInfo {
-  agentId: string;
-  filePath: string;
-  mtimeMs: number;
-  size: number;
-}
-
-interface UsageEvent {
-  timestamp: number;
-  agentId: string;
-  model: string;
-  inputTokens: number;
-  outputTokens: number;
-  cacheReadTokens: number;
-  cacheWriteTokens: number;
-  totalTokens: number;
-  cost: number;
-}
 
 interface AggregateBucket {
   cost: number;
@@ -82,17 +24,6 @@ interface AgentBreakdown extends DashboardBreakdown {
 
 interface ModelBreakdown extends DashboardBreakdown {
   model: string;
-}
-
-let cachedEvents:
-  | {
-      fingerprint: string;
-      events: UsageEvent[];
-    }
-  | null = null;
-
-function toFiniteNumber(value: unknown): number {
-  return typeof value === "number" && Number.isFinite(value) ? value : 0;
 }
 
 function roundCurrency(value: number): number {
@@ -125,187 +56,6 @@ function formatLocalDateKey(timestamp: number): string {
 
 function formatHourLabel(timestamp: number): string {
   return `${String(new Date(timestamp).getHours()).padStart(2, "0")}:00`;
-}
-
-function buildFingerprint(files: TranscriptFileInfo[]): string {
-  return files
-    .map((file) => `${file.filePath}:${file.mtimeMs}:${file.size}`)
-    .join("|");
-}
-
-function listTranscriptFiles(): TranscriptFileInfo[] {
-  if (!fs.existsSync(OPENCLAW_AGENTS_DIR)) {
-    return [];
-  }
-
-  const agentEntries = fs.readdirSync(OPENCLAW_AGENTS_DIR, { withFileTypes: true });
-  const files: TranscriptFileInfo[] = [];
-
-  for (const agentEntry of agentEntries) {
-    if (!agentEntry.isDirectory()) {
-      continue;
-    }
-
-    const agentId = agentEntry.name;
-    const sessionsDir = path.join(OPENCLAW_AGENTS_DIR, agentId, "sessions");
-    if (!fs.existsSync(sessionsDir)) {
-      continue;
-    }
-
-    const sessionEntries = fs.readdirSync(sessionsDir, { withFileTypes: true });
-    for (const sessionEntry of sessionEntries) {
-      if (!sessionEntry.isFile() || !TRANSCRIPT_FILE_PATTERN.test(sessionEntry.name)) {
-        continue;
-      }
-
-      const filePath = path.join(sessionsDir, sessionEntry.name);
-      const stat = fs.statSync(filePath);
-      files.push({
-        agentId,
-        filePath,
-        mtimeMs: stat.mtimeMs,
-        size: stat.size,
-      });
-    }
-  }
-
-  return files.sort((a, b) => a.filePath.localeCompare(b.filePath));
-}
-
-function parseTimestamp(...candidates: unknown[]): number | null {
-  for (const candidate of candidates) {
-    if (typeof candidate === "number" && Number.isFinite(candidate)) {
-      return candidate;
-    }
-
-    if (typeof candidate === "string" && candidate.trim()) {
-      const parsed = new Date(candidate).getTime();
-      if (Number.isFinite(parsed)) {
-        return parsed;
-      }
-    }
-  }
-
-  return null;
-}
-
-function resolveModelId(record: TranscriptRecord, message?: TranscriptMessage): string {
-  const rawModel =
-    (typeof message?.model === "string" && message.model.trim()) ||
-    (typeof record.model === "string" && record.model.trim()) ||
-    "unknown";
-
-  return normalizeModelId(rawModel);
-}
-
-function resolveCost(model: string, usage: UsagePayload): number {
-  const explicitTotal = toFiniteNumber(usage.cost?.total);
-  if (explicitTotal > 0) {
-    return explicitTotal;
-  }
-
-  const breakdownTotal =
-    toFiniteNumber(usage.cost?.input) +
-    toFiniteNumber(usage.cost?.output) +
-    toFiniteNumber(usage.cost?.cacheRead) +
-    toFiniteNumber(usage.cost?.cacheWrite);
-
-  if (breakdownTotal > 0) {
-    return breakdownTotal;
-  }
-
-  return calculateCost(
-    model,
-    toFiniteNumber(usage.input),
-    toFiniteNumber(usage.output),
-    toFiniteNumber(usage.cacheRead),
-    toFiniteNumber(usage.cacheWrite)
-  );
-}
-
-function parseUsageEvent(record: TranscriptRecord, agentId: string): UsageEvent | null {
-  const message = record.message;
-  const usage = message?.usage || record.usage;
-  if (!usage) {
-    return null;
-  }
-
-  const timestamp = parseTimestamp(record.timestamp, message?.timestamp);
-  if (timestamp === null) {
-    return null;
-  }
-
-  const inputTokens = toFiniteNumber(usage.input);
-  const outputTokens = toFiniteNumber(usage.output);
-  const cacheReadTokens = toFiniteNumber(usage.cacheRead);
-  const cacheWriteTokens = toFiniteNumber(usage.cacheWrite);
-  const totalTokens =
-    toFiniteNumber(usage.totalTokens) ||
-    inputTokens + outputTokens + cacheReadTokens + cacheWriteTokens;
-  const model = resolveModelId(record, message);
-  const cost = resolveCost(model, usage);
-
-  return {
-    timestamp,
-    agentId,
-    model,
-    inputTokens,
-    outputTokens,
-    cacheReadTokens,
-    cacheWriteTokens,
-    totalTokens,
-    cost,
-  };
-}
-
-async function readUsageEvents(file: TranscriptFileInfo): Promise<UsageEvent[]> {
-  const events: UsageEvent[] = [];
-  const stream = fs.createReadStream(file.filePath, { encoding: "utf-8" });
-  const reader = readline.createInterface({
-    input: stream,
-    crlfDelay: Infinity,
-  });
-
-  try {
-    for await (const line of reader) {
-      if (!line.trim()) {
-        continue;
-      }
-
-      try {
-        const record = JSON.parse(line) as TranscriptRecord;
-        const event = parseUsageEvent(record, file.agentId);
-        if (event) {
-          events.push(event);
-        }
-      } catch {
-        // Ignore malformed transcript lines so one bad record does not break the dashboard.
-      }
-    }
-  } finally {
-    reader.close();
-    stream.destroy();
-  }
-
-  return events;
-}
-
-async function loadUsageEvents(): Promise<UsageEvent[]> {
-  const files = listTranscriptFiles();
-  const fingerprint = buildFingerprint(files);
-
-  if (cachedEvents?.fingerprint === fingerprint) {
-    return cachedEvents.events;
-  }
-
-  const events: UsageEvent[] = [];
-  for (const file of files) {
-    events.push(...(await readUsageEvents(file)));
-  }
-
-  events.sort((a, b) => a.timestamp - b.timestamp);
-  cachedEvents = { fingerprint, events };
-  return events;
 }
 
 function createAggregateBucket(): AggregateBucket {
@@ -365,7 +115,9 @@ function toModelBreakdownEntries(data: Map<string, AggregateBucket>): ModelBreak
 }
 
 export async function loadCostDashboardData(days: number, budget: number) {
-  const events = await loadUsageEvents();
+  await syncUsageLedger();
+
+  const events = getPersistedUsageEvents();
   const now = new Date();
   const nowMs = now.getTime();
   const todayStart = getLocalDayStart(now);
@@ -380,6 +132,8 @@ export async function loadCostDashboardData(days: number, budget: number) {
   let yesterday = 0;
   let thisMonth = 0;
   let lastMonth = 0;
+  let allTime = 0;
+  let allTimeTokens = 0;
 
   const byAgent = new Map<string, AggregateBucket>();
   const byModel = new Map<string, AggregateBucket>();
@@ -387,6 +141,9 @@ export async function loadCostDashboardData(days: number, budget: number) {
   const hourlyBuckets = new Map<number, number>();
 
   for (const event of events) {
+    allTime += event.cost;
+    allTimeTokens += event.totalTokens;
+
     if (event.timestamp >= todayStart && event.timestamp < tomorrowStart) {
       today += event.cost;
     }
@@ -452,6 +209,8 @@ export async function loadCostDashboardData(days: number, budget: number) {
     yesterday: roundCurrency(yesterday),
     thisMonth: roundCurrency(thisMonth),
     lastMonth: roundCurrency(lastMonth),
+    allTime: roundCurrency(allTime),
+    allTimeTokens,
     projected: roundCurrency(projected),
     budget,
     byAgent: toAgentBreakdownEntries(byAgent),
@@ -459,7 +218,7 @@ export async function loadCostDashboardData(days: number, budget: number) {
     daily,
     hourly,
     updatedAt: nowMs,
-    source: "openclaw-session-logs",
+    source: "persistent-usage-ledger",
     message:
       events.length > 0
         ? undefined

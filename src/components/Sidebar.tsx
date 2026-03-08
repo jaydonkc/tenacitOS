@@ -38,7 +38,7 @@ const navItems = [
   { href: "/logs", label: "Live Logs", icon: Terminal },
   { href: "/terminal", label: "Terminal", icon: SquareTerminal },
   { href: "/git", label: "Git", icon: GitFork },
-  { href: "/workflows", label: "Workflows", icon: Workflow },
+  { href: "/workflows", label: "Pipelines", icon: Workflow },
   { href: "/activity", label: "Activity", icon: Activity },
   { href: "/memory", label: "Memory", icon: Brain },
   { href: "/files", label: "Files", icon: FolderOpen },

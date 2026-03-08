@@ -9,6 +9,8 @@ interface CostData {
   yesterday: number;
   thisMonth: number;
   lastMonth: number;
+  allTime: number;
+  allTimeTokens: number;
   projected: number;
   budget: number;
   byAgent: Array<{ agent: string; cost: number; tokens: number }>;
@@ -96,11 +98,16 @@ export default function CostsPage() {
             Costs & Analytics
           </h1>
           <p style={{ color: "var(--text-secondary)" }}>
-            Live usage and cost tracking from the same OpenClaw session-log source as `usage.cost`
+            Live usage and cost tracking with a persistent local ledger imported from OpenClaw session logs
           </p>
           {costData.updatedAt && (
             <p className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>
               Updated {new Date(costData.updatedAt).toLocaleTimeString()}
+            </p>
+          )}
+          {costData.source && (
+            <p className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>
+              Source: {costData.source}
             </p>
           )}
         </div>
@@ -124,7 +131,33 @@ export default function CostsPage() {
       </div>
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-4">
+        {/* All Time */}
+        <div className="p-6 rounded-xl" style={{ backgroundColor: "var(--card)", border: "1px solid var(--border)" }}>
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-sm" style={{ color: "var(--text-secondary)" }}>All Time Cost</span>
+          </div>
+          <div className="text-3xl font-bold" style={{ color: "var(--text-primary)" }}>
+            ${costData.allTime.toFixed(2)}
+          </div>
+          <p className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>
+            Persistent across transcript cleanup
+          </p>
+        </div>
+
+        {/* All Time Tokens */}
+        <div className="p-6 rounded-xl" style={{ backgroundColor: "var(--card)", border: "1px solid var(--border)" }}>
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-sm" style={{ color: "var(--text-secondary)" }}>All Time Tokens</span>
+          </div>
+          <div className="text-3xl font-bold" style={{ color: "var(--text-primary)" }}>
+            {costData.allTimeTokens.toLocaleString()}
+          </div>
+          <p className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>
+            Input, output, and cache tokens
+          </p>
+        </div>
+
         {/* Today */}
         <div className="p-6 rounded-xl" style={{ backgroundColor: "var(--card)", border: "1px solid var(--border)" }}>
           <div className="flex items-center justify-between mb-2">
@@ -190,7 +223,7 @@ export default function CostsPage() {
             ${costData.projected.toFixed(2)}
           </div>
           <p className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>
-            Based on current pace
+            Based on current monthly pace
           </p>
         </div>
       </div>

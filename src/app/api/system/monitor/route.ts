@@ -3,15 +3,9 @@ import { exec } from "child_process";
 import { promisify } from "util";
 import os from "os";
 
-const execAsync = promisify(exec);
+import { getManagedServiceEntries } from "@/lib/service-runtime";
 
-// Services monitored per backend
-const SYSTEMD_SERVICES = ["mission-control"];
-const PM2_SERVICES = ["classvault", "content-vault", "postiz-simple", "brain"];
-// creatoros not deployed yet — shown as "not_deployed"
-const PLACEHOLDER_SERVICES = [
-  { name: "creatoros", description: "Creatoros Platform", status: "not_deployed" },
-];
+const execAsync = promisify(exec);
 
 interface ServiceEntry {
   name: string;
@@ -62,35 +56,6 @@ function parseDockerPercent(value: string): number | null {
   const parsed = parseFloat(value.replace("%", "").trim());
   return Number.isFinite(parsed) ? parsed : null;
 }
-
-// Normalize PM2 status to a common set
-function normalizePm2Status(status: string): string {
-  switch (status) {
-    case "online":
-      return "active";
-    case "stopped":
-    case "stopping":
-      return "inactive";
-    case "errored":
-    case "error":
-      return "failed";
-    case "launching":
-    case "waiting restart":
-      return "activating";
-    default:
-      return status;
-  }
-}
-
-// Friendly display names for PM2 process names
-const SERVICE_DESCRIPTIONS: Record<string, string> = {
-  "mission-control": "Mission Control – Tenacitas Dashboard",
-  classvault: "ClassVault – LMS Platform",
-  "content-vault": "Content Vault – Draft Management Webapp",
-  "postiz-simple": "Postiz – Social Media Scheduler",
-  brain: "Brain – Internal Tools",
-  creatoros: "Creatoros Platform",
-};
 
 export async function GET() {
   try {
@@ -159,93 +124,7 @@ export async function GET() {
     // ── Services ─────────────────────────────────────────────────────────────
     const services: ServiceEntry[] = [];
 
-    // 1. Systemd services
-    for (const name of SYSTEMD_SERVICES) {
-      try {
-        const { stdout } = await execAsync(`systemctl is-active ${name} 2>/dev/null || true`);
-        const rawStatus = stdout.trim(); // "active" | "inactive" | "failed" | ...
-        services.push({
-          name,
-          status: rawStatus,
-          description: SERVICE_DESCRIPTIONS[name] ?? name,
-          backend: "systemd",
-        });
-      } catch {
-        services.push({
-          name,
-          status: "unknown",
-          description: SERVICE_DESCRIPTIONS[name] ?? name,
-          backend: "systemd",
-        });
-      }
-    }
-
-    // 2. PM2 services — single call, parse JSON
-    try {
-      const { stdout: pm2Json } = await execAsync("pm2 jlist 2>/dev/null");
-      const pm2List = JSON.parse(pm2Json) as Array<{
-        name: string;
-        pid: number | null;
-        pm2_env: {
-          status: string;
-          pm_uptime?: number;
-          restart_time?: number;
-          monit?: { cpu: number; memory: number };
-        };
-      }>;
-
-      const pm2Map: Record<string, (typeof pm2List)[0]> = {};
-      for (const proc of pm2List) {
-        pm2Map[proc.name] = proc;
-      }
-
-      for (const name of PM2_SERVICES) {
-        const proc = pm2Map[name];
-        if (!proc) {
-          services.push({
-            name,
-            status: "unknown",
-            description: SERVICE_DESCRIPTIONS[name] ?? name,
-            backend: "pm2",
-          });
-          continue;
-        }
-
-        const rawStatus = proc.pm2_env?.status ?? "unknown";
-        const uptime =
-          rawStatus === "online" && proc.pm2_env?.pm_uptime
-            ? Date.now() - proc.pm2_env.pm_uptime
-            : null;
-
-        services.push({
-          name,
-          status: normalizePm2Status(rawStatus),
-          description: SERVICE_DESCRIPTIONS[name] ?? name,
-          backend: "pm2",
-          uptime,
-          restarts: proc.pm2_env?.restart_time ?? 0,
-          pid: proc.pid,
-          cpu: proc.pm2_env?.monit?.cpu ?? null,
-          mem: proc.pm2_env?.monit?.memory ?? null,
-        });
-      }
-    } catch (err) {
-      console.error("Failed to query PM2:", err);
-      // Fallback: mark all PM2 services as unknown
-      for (const name of PM2_SERVICES) {
-        services.push({
-          name,
-          status: "unknown",
-          description: SERVICE_DESCRIPTIONS[name] ?? name,
-          backend: "pm2",
-        });
-      }
-    }
-
-    // 3. Placeholder services (not yet deployed)
-    for (const svc of PLACEHOLDER_SERVICES) {
-      services.push({ ...svc, backend: "none" });
-    }
+    services.push(...(await getManagedServiceEntries()));
 
     // ── Docker containers ────────────────────────────────────────────────────
     let dockerAvailable = false;
