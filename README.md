@@ -103,6 +103,12 @@ OPENCLAW_GATEWAY_TOKEN=
 OLLAMA_BASE_URL=http://127.0.0.1:11434
 AGENT_COMMS_HEALTH_URL=
 
+# --- Notion pipeline sync + live board status (optional) ---
+# Paste either the raw UUID or the full Notion URL for each board.
+NOTION_TOKEN=
+NOTION_INTERNSHIPS_DATABASE_ID=
+NOTION_HOUSING_DATABASE_ID=
+
 # --- Branding (customize for your instance) ---
 NEXT_PUBLIC_AGENT_NAME=Mission Control
 NEXT_PUBLIC_AGENT_EMOJI=🤖
@@ -160,6 +166,22 @@ Then in the UI:
 4. Visit **Agents / Sessions / Cron / Skills** and verify data is live
 
 If gateway-backed data is unavailable, TenacitOS falls back to CLI/filesystem reads automatically.
+
+### Notion-backed pipelines
+
+The Pipelines page can read live Notion board state when these are set:
+
+```env
+NOTION_TOKEN=secret_...
+NOTION_INTERNSHIPS_DATABASE_ID=https://www.notion.so/...
+NOTION_HOUSING_DATABASE_ID=https://www.notion.so/...
+```
+
+TenacitOS will resolve the configured database or data source, detect the Notion `Status` property, and show:
+
+- live item counts per status
+- whether the Notion stages match the pipeline stages in the dashboard
+- the last edited time of the board
 
 ### 3. Initialize data files
 

@@ -6,6 +6,7 @@ import {
   getAgentWorkspace,
   getDefaultModel,
   readOpenClawConfig,
+  resolveDefaultAgentId,
   type OpenClawAgentConfig,
 } from "@/lib/openclaw-runtime";
 
@@ -22,6 +23,11 @@ interface Agent {
   allowAgents?: string[];
   allowAgentsDetails?: Array<{ id: string; name: string; emoji: string; color: string }>;
   botToken?: string;
+  isDefault: boolean;
+  skillsFilter: {
+    mode: "all" | "allowlist";
+    selectedCount: number;
+  };
   status: "online" | "offline";
   lastActivity?: string;
   activeSessions: number;
@@ -94,6 +100,7 @@ function getLatestMemoryTimestamp(workspace: string): string | undefined {
 export async function GET() {
   try {
     const config = readOpenClawConfig();
+    const defaultAgentId = resolveDefaultAgentId(config);
     const defaultModel = getDefaultModel(config);
     const sessionCounts = getSessionCounts();
 
@@ -106,6 +113,9 @@ export async function GET() {
       const isRecentlyActive = lastActivityMs > 0 && Date.now() - lastActivityMs < 15 * 60 * 1000;
       const telegramAccount = config.channels?.telegram?.accounts?.[agent.id];
       const allowAgents = agent.subagents?.allowAgents || [];
+      const normalizedSkillFilter = Array.isArray(agent.skills)
+        ? [...new Set(agent.skills.map((skill) => skill.trim()).filter(Boolean))]
+        : null;
 
       const allowAgentsDetails = allowAgents.map((subagentId) => {
         const subagentConfig = (config.agents?.list || []).find((candidate) => candidate.id === subagentId);
@@ -129,6 +139,16 @@ export async function GET() {
         allowAgents,
         allowAgentsDetails,
         botToken: telegramAccount?.botToken ? "configured" : undefined,
+        isDefault: agent.id === defaultAgentId,
+        skillsFilter: normalizedSkillFilter
+          ? {
+              mode: "allowlist",
+              selectedCount: normalizedSkillFilter.length,
+            }
+          : {
+              mode: "all",
+              selectedCount: 0,
+            },
         status: activeSessions > 0 || isRecentlyActive ? "online" : "offline",
         lastActivity,
         activeSessions,

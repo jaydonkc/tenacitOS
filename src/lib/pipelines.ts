@@ -1,6 +1,7 @@
 import fs from "fs";
 import { tryRunOpenClawJson } from "@/lib/openclaw-cli";
 import { getMemoryStackSnapshot, type WorkspaceMemoryBackend } from "@/lib/memory-stack";
+import { extractNotionResourceId, getNotionBoardSnapshot, type NotionBoardSnapshot } from "@/lib/notion";
 import { OPENCLAW_CRON_JOBS } from "@/lib/openclaw-runtime";
 
 type PipelineDomain = "internships" | "housing";
@@ -25,10 +26,16 @@ interface PipelineBlueprint {
   name: string;
   domain: PipelineDomain;
   description: string;
+  agentId: string;
   workspaceId: string;
   graphRequirement: GraphRequirement;
   triggerMode: "cron";
   recommendedSchedule: string;
+  recommendedCronExpr: string;
+  recommendedTimezone: string;
+  cronJobName: string;
+  sessionId: string;
+  triggerPrompt: string;
   cronMatchTerms: string[];
   searchTemplates: string[];
   stages: string[];
@@ -41,11 +48,14 @@ interface PipelineBlueprint {
   integrationNote: string;
 }
 
-interface CronJobSummary {
+export interface CronJobSummary {
   id: string;
   name: string;
   enabled: boolean;
   scheduleDisplay: string;
+  scheduleKind: string | null;
+  cronExpr: string | null;
+  timezone: string | null;
   nextRun: string | null;
   lastRun: string | null;
 }
@@ -60,6 +70,7 @@ interface PipelineOutputStatus {
   databaseValuePreview: string | null;
   syncMode: "approval" | "automatic";
   note: string;
+  board: NotionBoardSnapshot | null;
 }
 
 interface PipelineWorkspaceStatus {
@@ -85,6 +96,11 @@ export interface PipelineSnapshot {
   automation: {
     mode: "cron";
     recommendedSchedule: string;
+    recommendedCronExpr: string;
+    recommendedTimezone: string;
+    cronJobName: string;
+    agentId: string;
+    sessionId: string;
     linkedJob: CronJobSummary | null;
   };
   output: PipelineOutputStatus;
@@ -114,6 +130,18 @@ export interface PipelineDashboardSnapshot {
   pipelines: PipelineSnapshot[];
 }
 
+export interface PipelineTriggerConfig {
+  id: string;
+  name: string;
+  agentId: string;
+  cronJobName: string;
+  sessionId: string;
+  prompt: string;
+  description: string;
+  recommendedCronExpr: string;
+  recommendedTimezone: string;
+}
+
 const PIPELINE_BLUEPRINTS: PipelineBlueprint[] = [
   {
     id: "internship-radar",
@@ -122,10 +150,17 @@ const PIPELINE_BLUEPRINTS: PipelineBlueprint[] = [
     domain: "internships",
     description:
       "Search for internships, score fit, dedupe repeat listings, and send approved leads into a Notion pipeline.",
+    agentId: "coding",
     workspaceId: "workspace-coding",
     graphRequirement: "required",
     triggerMode: "cron",
     recommendedSchedule: "Weekdays at 08:00 and 18:00",
+    recommendedCronExpr: "0 8,18 * * 1-5",
+    recommendedTimezone: "America/Los_Angeles",
+    cronJobName: "pipeline:internship-radar",
+    sessionId: "pipeline-internship-radar",
+    triggerPrompt:
+      "Run the Internship Radar pipeline. Search for new internships using the configured templates, deduplicate repeats, score fit, update memory context, and prepare approved-ready changes for the Notion internships board. End with a concise summary of findings, decisions, and follow-up items.",
     cronMatchTerms: ["internship", "career", "job hunt", "new grad"],
     searchTemplates: [
       "software engineer internship summer 2027 remote",
@@ -162,10 +197,17 @@ const PIPELINE_BLUEPRINTS: PipelineBlueprint[] = [
     domain: "housing",
     description:
       "Monitor next-year housing options, rank listings by budget and commute, and push shortlisted places into Notion.",
+    agentId: "main",
     workspaceId: "workspace",
     graphRequirement: "optional",
     triggerMode: "cron",
     recommendedSchedule: "Daily at 09:00 and 19:00",
+    recommendedCronExpr: "0 9,19 * * *",
+    recommendedTimezone: "America/Los_Angeles",
+    cronJobName: "pipeline:housing-radar",
+    sessionId: "pipeline-housing-radar",
+    triggerPrompt:
+      "Run the Housing Radar pipeline. Search for housing options using the configured templates, filter by budget and lease timing, cluster duplicates, update preference memory, and prepare shortlist updates for the Notion housing board. End with a concise summary of promising listings and next steps.",
     cronMatchTerms: ["housing", "apartment", "lease", "rent", "zillow"],
     searchTemplates: [
       "san luis obispo 4 bedroom lease august 2027",
@@ -242,6 +284,9 @@ function mapCronJobs(rawJobs: CronJobRecord[]): CronJobSummary[] {
     name: String(job.name || job.id || "Unnamed"),
     enabled: job.enabled ?? true,
     scheduleDisplay: formatSchedule(job.schedule),
+    scheduleKind: typeof job.schedule?.kind === "string" ? String(job.schedule.kind) : null,
+    cronExpr: typeof job.schedule?.expr === "string" ? String(job.schedule.expr) : null,
+    timezone: typeof job.schedule?.tz === "string" && job.schedule.tz ? String(job.schedule.tz) : null,
     nextRun: (job.state as Record<string, number> | undefined)?.nextRunAtMs
       ? new Date((job.state as Record<string, number>).nextRunAtMs).toISOString()
       : null,
@@ -288,6 +333,11 @@ function workspaceSummary(workspace: WorkspaceMemoryBackend | undefined | null):
 }
 
 function findLinkedJob(blueprint: PipelineBlueprint, jobs: CronJobSummary[]): CronJobSummary | null {
+  const exactMatch = jobs.find((job) => job.name === blueprint.cronJobName);
+  if (exactMatch) {
+    return exactMatch;
+  }
+
   const matches = jobs.filter((job) => {
     const haystack = `${job.id} ${job.name}`.toLowerCase();
     return blueprint.cronMatchTerms.some((term) => haystack.includes(term));
@@ -300,20 +350,63 @@ function findLinkedJob(blueprint: PipelineBlueprint, jobs: CronJobSummary[]): Cr
   return matches.find((job) => job.enabled) || matches[0];
 }
 
-function getPipelineOutput(blueprint: PipelineBlueprint): PipelineOutputStatus {
+function getBlueprintById(pipelineId: string): PipelineBlueprint | null {
+  return PIPELINE_BLUEPRINTS.find((blueprint) => blueprint.id === pipelineId) || null;
+}
+
+export function getPipelineTriggerConfig(pipelineId: string): PipelineTriggerConfig | null {
+  const blueprint = getBlueprintById(pipelineId);
+  if (!blueprint) {
+    return null;
+  }
+
+  return {
+    id: blueprint.id,
+    name: blueprint.name,
+    agentId: blueprint.agentId,
+    cronJobName: blueprint.cronJobName,
+    sessionId: blueprint.sessionId,
+    prompt: blueprint.triggerPrompt,
+    description: blueprint.description,
+    recommendedCronExpr: blueprint.recommendedCronExpr,
+    recommendedTimezone: blueprint.recommendedTimezone,
+  };
+}
+
+export function getLinkedPipelineJob(pipelineId: string): CronJobSummary | null {
+  const blueprint = getBlueprintById(pipelineId);
+  if (!blueprint) {
+    return null;
+  }
+
+  return findLinkedJob(blueprint, mapCronJobs(readCronJobs()));
+}
+
+async function getPipelineOutput(blueprint: PipelineBlueprint): Promise<PipelineOutputStatus> {
   const notionToken = firstEnv(NOTION_TOKEN_KEYS);
   const database = firstEnv(blueprint.databaseEnvKeys);
+  const databaseId = extractNotionResourceId(database?.value);
+  const configured = Boolean(notionToken && databaseId);
+  const board =
+    configured && notionToken && databaseId
+      ? await getNotionBoardSnapshot({
+          token: notionToken.value,
+          databaseId,
+          expectedStages: blueprint.reviewColumns,
+        })
+      : null;
 
   return {
     provider: "notion",
     label: blueprint.outputLabel,
-    configured: Boolean(notionToken && database),
+    configured,
     tokenConfigured: Boolean(notionToken),
-    databaseConfigured: Boolean(database),
+    databaseConfigured: Boolean(databaseId),
     databaseKey: database?.key || null,
-    databaseValuePreview: previewSecret(database?.value || null),
+    databaseValuePreview: previewSecret(databaseId || database?.value || null),
     syncMode: "approval",
     note: blueprint.integrationNote,
+    board,
   };
 }
 
@@ -351,6 +444,13 @@ function getStatus(
     };
   }
 
+  if (output.board && !output.board.available) {
+    return {
+      status: "attention",
+      reason: output.board.error || "The Notion board is configured, but the dashboard could not read its live status.",
+    };
+  }
+
   if (!linkedJob.enabled) {
     return {
       status: "attention",
@@ -364,14 +464,14 @@ function getStatus(
   };
 }
 
-export function getPipelineDashboardSnapshot(): PipelineDashboardSnapshot {
+export async function getPipelineDashboardSnapshot(): Promise<PipelineDashboardSnapshot> {
   const memoryStack = getMemoryStackSnapshot();
   const jobs = mapCronJobs(readCronJobs());
 
-  const pipelines = PIPELINE_BLUEPRINTS.map((blueprint) => {
+  const pipelines = await Promise.all(PIPELINE_BLUEPRINTS.map(async (blueprint) => {
     const workspace = memoryStack.workspaces.find((entry) => entry.workspaceId === blueprint.workspaceId);
     const linkedJob = findLinkedJob(blueprint, jobs);
-    const output = getPipelineOutput(blueprint);
+    const output = await getPipelineOutput(blueprint);
     const status = getStatus(blueprint, workspace, linkedJob, output);
 
     return {
@@ -387,22 +487,27 @@ export function getPipelineDashboardSnapshot(): PipelineDashboardSnapshot {
       automation: {
         mode: blueprint.triggerMode,
         recommendedSchedule: blueprint.recommendedSchedule,
+        recommendedCronExpr: blueprint.recommendedCronExpr,
+        recommendedTimezone: blueprint.recommendedTimezone,
+        cronJobName: blueprint.cronJobName,
+        agentId: blueprint.agentId,
+        sessionId: blueprint.sessionId,
         linkedJob,
       },
       output,
       searchTemplates: blueprint.searchTemplates,
       stages: blueprint.stages,
-      reviewColumns: blueprint.reviewColumns,
+      reviewColumns: output.board?.statusOptions.length ? output.board.statusOptions : blueprint.reviewColumns,
       boardFields: blueprint.boardFields,
       rules: blueprint.rules,
       graphQueries: blueprint.graphQueries,
     } satisfies PipelineSnapshot;
-  });
+  }));
 
   const ready = pipelines.filter((pipeline) => pipeline.status === "ready").length;
   const attention = pipelines.filter((pipeline) => pipeline.status === "attention").length;
   const scheduled = pipelines.filter((pipeline) => Boolean(pipeline.automation.linkedJob?.enabled)).length;
-  const notionReady = pipelines.filter((pipeline) => pipeline.output.configured).length;
+  const notionReady = pipelines.filter((pipeline) => pipeline.output.board?.available).length;
   const graphReady = pipelines.filter((pipeline) => pipeline.workspace?.graphEnabled).length;
 
   return {

@@ -37,6 +37,9 @@ interface CronJobSummary {
   name: string;
   enabled: boolean;
   scheduleDisplay: string;
+  scheduleKind: string | null;
+  cronExpr: string | null;
+  timezone: string | null;
   nextRun: string | null;
   lastRun: string | null;
 }
@@ -51,6 +54,31 @@ interface PipelineOutputStatus {
   databaseValuePreview: string | null;
   syncMode: "approval" | "automatic";
   note: string;
+  board: NotionBoardSnapshot | null;
+}
+
+interface NotionStatusBucket {
+  name: string;
+  color: string | null;
+  count: number;
+  expected: boolean;
+}
+
+interface NotionBoardSnapshot {
+  available: boolean;
+  source: "data_source" | "database" | null;
+  dataSourceId: string | null;
+  schemaName: string | null;
+  propertyName: string | null;
+  propertyType: "status" | "select" | "multi_select" | "rich_text" | "title" | null;
+  totalPages: number | null;
+  lastEditedTime: string | null;
+  statusOptions: string[];
+  buckets: NotionStatusBucket[];
+  missingExpectedStages: string[];
+  extraStages: string[];
+  aligned: boolean;
+  error: string | null;
 }
 
 interface PipelineSnapshot {
@@ -66,6 +94,11 @@ interface PipelineSnapshot {
   automation: {
     mode: "cron";
     recommendedSchedule: string;
+    recommendedCronExpr: string;
+    recommendedTimezone: string;
+    cronJobName: string;
+    agentId: string;
+    sessionId: string;
     linkedJob: CronJobSummary | null;
   };
   output: PipelineOutputStatus;
@@ -142,6 +175,38 @@ function formatTimestamp(value: string | null): string {
     minute: "2-digit",
   });
 }
+
+function notionColorStyle(color: string | null): { backgroundColor: string; borderColor: string; color: string } {
+  switch (color) {
+    case "green":
+      return { backgroundColor: "rgba(34,197,94,0.12)", borderColor: "rgba(34,197,94,0.22)", color: "#86efac" };
+    case "yellow":
+      return { backgroundColor: "rgba(245,158,11,0.12)", borderColor: "rgba(245,158,11,0.22)", color: "#fcd34d" };
+    case "orange":
+      return { backgroundColor: "rgba(249,115,22,0.12)", borderColor: "rgba(249,115,22,0.22)", color: "#fdba74" };
+    case "red":
+      return { backgroundColor: "rgba(239,68,68,0.12)", borderColor: "rgba(239,68,68,0.22)", color: "#fca5a5" };
+    case "blue":
+      return { backgroundColor: "rgba(59,130,246,0.12)", borderColor: "rgba(59,130,246,0.22)", color: "#93c5fd" };
+    case "purple":
+      return { backgroundColor: "rgba(168,85,247,0.12)", borderColor: "rgba(168,85,247,0.22)", color: "#d8b4fe" };
+    case "pink":
+      return { backgroundColor: "rgba(236,72,153,0.12)", borderColor: "rgba(236,72,153,0.22)", color: "#f9a8d4" };
+    case "brown":
+      return { backgroundColor: "rgba(161,98,7,0.14)", borderColor: "rgba(161,98,7,0.24)", color: "#fcd34d" };
+    case "gray":
+    default:
+      return { backgroundColor: "rgba(255,255,255,0.04)", borderColor: "rgba(255,255,255,0.08)", color: "var(--text-secondary)" };
+  }
+}
+
+const TIMEZONE_OPTIONS = [
+  "America/Los_Angeles",
+  "America/Denver",
+  "America/Chicago",
+  "America/New_York",
+  "UTC",
+];
 
 function MetricCard({
   label,
@@ -287,6 +352,12 @@ export default function WorkflowsPage() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [scheduleDraft, setScheduleDraft] = useState("");
+  const [timezoneDraft, setTimezoneDraft] = useState("America/Los_Angeles");
+  const [triggerEnabled, setTriggerEnabled] = useState(true);
+  const [triggerSaving, setTriggerSaving] = useState(false);
+  const [triggerRunning, setTriggerRunning] = useState(false);
+  const [triggerFeedback, setTriggerFeedback] = useState<{ tone: "success" | "error"; message: string } | null>(null);
 
   const loadPipelines = async (mode: "initial" | "refresh") => {
     if (mode === "initial") {
@@ -328,6 +399,96 @@ export default function WorkflowsPage() {
       null
     );
   }, [activePipelineId, data]);
+
+  useEffect(() => {
+    if (!activePipeline) {
+      return;
+    }
+
+    setScheduleDraft(
+      activePipeline.automation.linkedJob?.cronExpr || activePipeline.automation.recommendedCronExpr
+    );
+    setTimezoneDraft(
+      activePipeline.automation.linkedJob?.timezone || activePipeline.automation.recommendedTimezone
+    );
+    setTriggerEnabled(activePipeline.automation.linkedJob?.enabled ?? true);
+    setTriggerFeedback(null);
+  }, [activePipeline]);
+
+  const saveTrigger = async () => {
+    if (!activePipeline) {
+      return;
+    }
+
+    setTriggerSaving(true);
+    setTriggerFeedback(null);
+
+    try {
+      const res = await fetch(`/api/pipelines/${activePipeline.id}/trigger`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          cronExpr: scheduleDraft,
+          timezone: timezoneDraft,
+          enabled: triggerEnabled,
+        }),
+      });
+      const payload = await res.json();
+
+      if (!res.ok) {
+        throw new Error(payload.error || "Failed to save pipeline schedule");
+      }
+
+      await loadPipelines("refresh");
+      setTriggerFeedback({
+        tone: "success",
+        message: triggerEnabled ? "Pipeline schedule saved." : "Pipeline schedule saved in paused mode.",
+      });
+    } catch (err) {
+      setTriggerFeedback({
+        tone: "error",
+        message: err instanceof Error ? err.message : "Failed to save pipeline schedule",
+      });
+    } finally {
+      setTriggerSaving(false);
+    }
+  };
+
+  const runPipelineNow = async () => {
+    if (!activePipeline) {
+      return;
+    }
+
+    setTriggerRunning(true);
+    setTriggerFeedback(null);
+
+    try {
+      const res = await fetch(`/api/pipelines/${activePipeline.id}/trigger`, {
+        method: "POST",
+      });
+      const payload = await res.json();
+
+      if (!res.ok) {
+        throw new Error(payload.error || "Failed to run pipeline");
+      }
+
+      await loadPipelines("refresh");
+      setTriggerFeedback({
+        tone: "success",
+        message:
+          payload.source === "cron-job"
+            ? "Pipeline triggered from its saved schedule."
+            : "Pipeline triggered directly.",
+      });
+    } catch (err) {
+      setTriggerFeedback({
+        tone: "error",
+        message: err instanceof Error ? err.message : "Failed to run pipeline",
+      });
+    } finally {
+      setTriggerRunning(false);
+    }
+  };
 
   return (
     <div className="p-4 md:p-8" style={{ display: "flex", flexDirection: "column", gap: "18px" }}>
@@ -474,7 +635,7 @@ export default function WorkflowsPage() {
             <MetricCard
               label="Notion Ready"
               value={data.summary.notionReady}
-              hint="Pipelines with a configured review database"
+              hint="Pipelines with a readable live Notion board"
             />
           </div>
 
@@ -635,8 +796,20 @@ export default function WorkflowsPage() {
                     />
                     <InfoPill
                       icon={Database}
-                      tone={pipeline.output.configured ? "success" : "warning"}
-                      label={pipeline.output.configured ? "Notion ready" : "Notion pending"}
+                      tone={
+                        pipeline.output.board?.available
+                          ? "success"
+                          : pipeline.output.configured
+                            ? "warning"
+                            : "warning"
+                      }
+                      label={
+                        pipeline.output.board?.available
+                          ? `${pipeline.output.board.totalPages ?? 0} live Notion items`
+                          : pipeline.output.configured
+                            ? "Notion unreadable"
+                            : "Notion pending"
+                      }
                     />
                   </div>
 
@@ -699,8 +872,18 @@ export default function WorkflowsPage() {
                     />
                     <InfoPill
                       icon={Database}
-                      tone={activePipeline.output.configured ? "success" : "warning"}
-                      label={`${activePipeline.output.label} (${activePipeline.output.syncMode})`}
+                      tone={
+                        activePipeline.output.board?.available
+                          ? "success"
+                          : activePipeline.output.configured
+                            ? "warning"
+                            : "warning"
+                      }
+                      label={
+                        activePipeline.output.board?.available
+                          ? `${activePipeline.output.label}: ${activePipeline.output.board.totalPages ?? 0} items`
+                          : `${activePipeline.output.label} (${activePipeline.output.syncMode})`
+                      }
                     />
                   </div>
 
@@ -739,10 +922,10 @@ export default function WorkflowsPage() {
                     </div>
                     <div style={{ padding: "12px", borderRadius: "12px", backgroundColor: "var(--bg)" }}>
                       <div style={{ fontSize: "10px", textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--text-muted)", marginBottom: "5px" }}>
-                        Notion DB
+                        Notion Board
                       </div>
                       <div style={{ fontSize: "13px", fontWeight: 600, color: "var(--text-primary)" }}>
-                        {activePipeline.output.databaseValuePreview || "Not configured"}
+                        {activePipeline.output.board?.schemaName || activePipeline.output.databaseValuePreview || "Not configured"}
                       </div>
                     </div>
                   </div>
@@ -842,10 +1025,350 @@ export default function WorkflowsPage() {
 
               <div style={{ display: "grid", gap: "14px" }}>
                 <SectionCard
+                  title="Trigger Control"
+                  subtitle="Schedule the pipeline or fire it immediately."
+                >
+                  <div style={{ display: "grid", gap: "14px" }}>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
+                      <InfoPill
+                        icon={Timer}
+                        tone={activePipeline.automation.linkedJob ? "success" : "warning"}
+                        label={
+                          activePipeline.automation.linkedJob
+                            ? `Saved job: ${activePipeline.automation.linkedJob.name}`
+                            : "No saved trigger yet"
+                        }
+                      />
+                      <InfoPill
+                        icon={CalendarClock}
+                        tone={triggerEnabled ? "success" : "warning"}
+                        label={triggerEnabled ? "Schedule enabled" : "Schedule paused"}
+                      />
+                      <InfoPill
+                        icon={Brain}
+                        label={`${activePipeline.automation.agentId} -> ${activePipeline.automation.sessionId}`}
+                        tone="neutral"
+                      />
+                    </div>
+
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+                        gap: "12px",
+                      }}
+                    >
+                      <div>
+                        <div
+                          style={{
+                            fontSize: "11px",
+                            textTransform: "uppercase",
+                            letterSpacing: "0.08em",
+                            color: "var(--text-muted)",
+                            marginBottom: "6px",
+                          }}
+                        >
+                          Cron Expression
+                        </div>
+                        <input
+                          value={scheduleDraft}
+                          onChange={(event) => setScheduleDraft(event.target.value)}
+                          placeholder={activePipeline.automation.recommendedCronExpr}
+                          style={{
+                            width: "100%",
+                            padding: "10px 12px",
+                            borderRadius: "12px",
+                            border: "1px solid var(--border)",
+                            backgroundColor: "var(--bg)",
+                            color: "var(--text-primary)",
+                            fontFamily: "var(--font-mono)",
+                            fontSize: "13px",
+                          }}
+                        />
+                        <div style={{ marginTop: "6px", fontSize: "12px", color: "var(--text-secondary)" }}>
+                          Recommended: {activePipeline.automation.recommendedCronExpr} ({activePipeline.automation.recommendedSchedule})
+                        </div>
+                      </div>
+
+                      <div>
+                        <div
+                          style={{
+                            fontSize: "11px",
+                            textTransform: "uppercase",
+                            letterSpacing: "0.08em",
+                            color: "var(--text-muted)",
+                            marginBottom: "6px",
+                          }}
+                        >
+                          Timezone
+                        </div>
+                        <input
+                          list="pipeline-timezones"
+                          value={timezoneDraft}
+                          onChange={(event) => setTimezoneDraft(event.target.value)}
+                          placeholder={activePipeline.automation.recommendedTimezone}
+                          style={{
+                            width: "100%",
+                            padding: "10px 12px",
+                            borderRadius: "12px",
+                            border: "1px solid var(--border)",
+                            backgroundColor: "var(--bg)",
+                            color: "var(--text-primary)",
+                            fontSize: "13px",
+                          }}
+                        />
+                        <datalist id="pipeline-timezones">
+                          {TIMEZONE_OPTIONS.map((timezone) => (
+                            <option key={timezone} value={timezone} />
+                          ))}
+                        </datalist>
+                        <div style={{ marginTop: "6px", fontSize: "12px", color: "var(--text-secondary)" }}>
+                          Recommended: {activePipeline.automation.recommendedTimezone}
+                        </div>
+                      </div>
+                    </div>
+
+                    <label
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "10px",
+                        fontSize: "13px",
+                        color: "var(--text-secondary)",
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={triggerEnabled}
+                        onChange={(event) => setTriggerEnabled(event.target.checked)}
+                      />
+                      Keep this pipeline trigger enabled after saving
+                    </label>
+
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: "10px" }}>
+                      <button
+                        onClick={() => {
+                          setScheduleDraft(activePipeline.automation.recommendedCronExpr);
+                          setTimezoneDraft(activePipeline.automation.recommendedTimezone);
+                          setTriggerEnabled(true);
+                        }}
+                        style={{
+                          padding: "10px 12px",
+                          borderRadius: "12px",
+                          border: "1px solid var(--border)",
+                          backgroundColor: "var(--bg)",
+                          color: "var(--text-primary)",
+                          fontSize: "12px",
+                          fontWeight: 700,
+                          cursor: "pointer",
+                        }}
+                      >
+                        Use Recommended
+                      </button>
+
+                      <button
+                        onClick={() => void saveTrigger()}
+                        disabled={triggerSaving}
+                        style={{
+                          padding: "10px 12px",
+                          borderRadius: "12px",
+                          border: "1px solid rgba(255,59,48,0.28)",
+                          backgroundColor: "rgba(255,59,48,0.14)",
+                          color: "var(--accent)",
+                          fontSize: "12px",
+                          fontWeight: 700,
+                          cursor: triggerSaving ? "wait" : "pointer",
+                          opacity: triggerSaving ? 0.7 : 1,
+                        }}
+                      >
+                        {triggerSaving ? "Saving..." : activePipeline.automation.linkedJob ? "Update Schedule" : "Save Schedule"}
+                      </button>
+
+                      <button
+                        onClick={() => void runPipelineNow()}
+                        disabled={triggerRunning}
+                        style={{
+                          padding: "10px 12px",
+                          borderRadius: "12px",
+                          border: "1px solid rgba(34,197,94,0.28)",
+                          backgroundColor: "rgba(34,197,94,0.14)",
+                          color: "#86efac",
+                          fontSize: "12px",
+                          fontWeight: 700,
+                          cursor: triggerRunning ? "wait" : "pointer",
+                          opacity: triggerRunning ? 0.7 : 1,
+                        }}
+                      >
+                        {triggerRunning ? "Running..." : "Run Now"}
+                      </button>
+                    </div>
+
+                    <div style={{ fontSize: "12px", color: "var(--text-secondary)", lineHeight: 1.6 }}>
+                      Saved schedules become real OpenClaw cron jobs named <code>{activePipeline.automation.cronJobName}</code>.
+                      Manual runs use that job when it exists, otherwise they run the pipeline directly once.
+                    </div>
+
+                    {triggerFeedback ? (
+                      <div
+                        style={{
+                          padding: "12px 14px",
+                          borderRadius: "12px",
+                          border:
+                            triggerFeedback.tone === "success"
+                              ? "1px solid rgba(34,197,94,0.22)"
+                              : "1px solid rgba(248,113,113,0.22)",
+                          backgroundColor:
+                            triggerFeedback.tone === "success"
+                              ? "rgba(21,128,61,0.12)"
+                              : "rgba(127,29,29,0.2)",
+                          color: triggerFeedback.tone === "success" ? "#86efac" : "#fecaca",
+                          fontSize: "13px",
+                        }}
+                      >
+                        {triggerFeedback.message}
+                      </div>
+                    ) : null}
+                  </div>
+                </SectionCard>
+
+                <SectionCard
                   title="Review Board"
                   subtitle="Notion should mirror the decisions you make here."
                 >
                   <div style={{ display: "grid", gap: "12px" }}>
+                    {activePipeline.output.board?.available ? (
+                      <>
+                        <div
+                          style={{
+                            display: "grid",
+                            gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
+                            gap: "10px",
+                          }}
+                        >
+                          <div style={{ padding: "12px", borderRadius: "12px", backgroundColor: "var(--bg)" }}>
+                            <div style={{ fontSize: "10px", textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--text-muted)", marginBottom: "5px" }}>
+                              Status Property
+                            </div>
+                            <div style={{ fontSize: "13px", fontWeight: 600, color: "var(--text-primary)" }}>
+                              {activePipeline.output.board.propertyName || "Unknown"}
+                            </div>
+                          </div>
+                          <div style={{ padding: "12px", borderRadius: "12px", backgroundColor: "var(--bg)" }}>
+                            <div style={{ fontSize: "10px", textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--text-muted)", marginBottom: "5px" }}>
+                              Tracked Items
+                            </div>
+                            <div style={{ fontSize: "13px", fontWeight: 600, color: "var(--text-primary)" }}>
+                              {activePipeline.output.board.totalPages ?? 0}
+                            </div>
+                          </div>
+                          <div style={{ padding: "12px", borderRadius: "12px", backgroundColor: "var(--bg)" }}>
+                            <div style={{ fontSize: "10px", textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--text-muted)", marginBottom: "5px" }}>
+                              Last Notion Edit
+                            </div>
+                            <div style={{ fontSize: "13px", fontWeight: 600, color: "var(--text-primary)" }}>
+                              {formatTimestamp(activePipeline.output.board.lastEditedTime)}
+                            </div>
+                          </div>
+                          <div style={{ padding: "12px", borderRadius: "12px", backgroundColor: "var(--bg)" }}>
+                            <div style={{ fontSize: "10px", textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--text-muted)", marginBottom: "5px" }}>
+                              Stage Alignment
+                            </div>
+                            <div style={{ fontSize: "13px", fontWeight: 600, color: "var(--text-primary)" }}>
+                              {activePipeline.output.board.aligned ? "Aligned" : "Needs cleanup"}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div>
+                          <div style={{ fontSize: "12px", color: "var(--text-muted)", marginBottom: "8px" }}>
+                            Live Notion statuses
+                          </div>
+                          <div
+                            style={{
+                              display: "grid",
+                              gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
+                              gap: "10px",
+                            }}
+                          >
+                            {activePipeline.output.board.buckets.map((bucket) => {
+                              const tone = notionColorStyle(bucket.color);
+
+                              return (
+                                <div
+                                  key={bucket.name}
+                                  style={{
+                                    padding: "12px",
+                                    borderRadius: "12px",
+                                    backgroundColor: tone.backgroundColor,
+                                    border: `1px solid ${tone.borderColor}`,
+                                  }}
+                                >
+                                  <div
+                                    style={{
+                                      display: "flex",
+                                      alignItems: "center",
+                                      justifyContent: "space-between",
+                                      gap: "10px",
+                                      marginBottom: "6px",
+                                    }}
+                                  >
+                                    <div style={{ fontSize: "12px", fontWeight: 700, color: tone.color }}>{bucket.name}</div>
+                                    <div style={{ fontSize: "18px", fontWeight: 700, color: "var(--text-primary)" }}>{bucket.count}</div>
+                                  </div>
+                                  <div style={{ fontSize: "11px", color: "var(--text-secondary)" }}>
+                                    {bucket.expected ? "Expected pipeline stage" : "Extra Notion-only stage"}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        {activePipeline.output.board.missingExpectedStages.length > 0 ? (
+                          <div>
+                            <div style={{ fontSize: "12px", color: "var(--text-muted)", marginBottom: "8px" }}>
+                              Missing expected stages in Notion
+                            </div>
+                            <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
+                              {activePipeline.output.board.missingExpectedStages.map((stage) => (
+                                <InfoPill key={stage} icon={AlertTriangle} tone="warning" label={stage} />
+                              ))}
+                            </div>
+                          </div>
+                        ) : null}
+
+                        {activePipeline.output.board.extraStages.length > 0 ? (
+                          <div>
+                            <div style={{ fontSize: "12px", color: "var(--text-muted)", marginBottom: "8px" }}>
+                              Extra stages currently in Notion
+                            </div>
+                            <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
+                              {activePipeline.output.board.extraStages.map((stage) => (
+                                <InfoPill key={stage} label={stage} tone="accent" />
+                              ))}
+                            </div>
+                          </div>
+                        ) : null}
+                      </>
+                    ) : activePipeline.output.board?.error ? (
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "8px",
+                          padding: "12px 14px",
+                          borderRadius: "12px",
+                          backgroundColor: "rgba(127,29,29,0.2)",
+                          border: "1px solid rgba(248,113,113,0.22)",
+                          color: "#fecaca",
+                          fontSize: "13px",
+                        }}
+                      >
+                        <AlertTriangle size={15} />
+                        {activePipeline.output.board.error}
+                      </div>
+                    ) : null}
+
                     <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
                       {activePipeline.reviewColumns.map((column) => (
                         <InfoPill key={column} label={column} tone="neutral" />
@@ -961,13 +1484,19 @@ export default function WorkflowsPage() {
                   title="Sync Path"
                   subtitle="Approval-first output keeps your automations reversible."
                 >
-                  <div style={{ display: "grid", gap: "10px" }}>
-                    <div style={{ fontSize: "13px", color: "var(--text-secondary)", lineHeight: 1.6 }}>
-                      The right pattern is: discovery to scoring to review queue to approval to Notion sync to follow-up.
-                    </div>
-                    <div style={{ display: "grid", gap: "8px" }}>
-                      <div style={{ fontSize: "12px", color: "var(--text-muted)" }}>Environment status</div>
-                      <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
+                    <div style={{ display: "grid", gap: "10px" }}>
+                      <div style={{ fontSize: "13px", color: "var(--text-secondary)", lineHeight: 1.6 }}>
+                        The right pattern is: discovery to scoring to review queue to approval to Notion sync to follow-up.
+                      </div>
+                      {activePipeline.output.board?.available ? (
+                        <div style={{ fontSize: "13px", color: "var(--text-secondary)", lineHeight: 1.6 }}>
+                          The dashboard is now reading the live Notion board state, so these pipeline stages reflect the
+                          actual status property and item counts in Notion.
+                        </div>
+                      ) : null}
+                      <div style={{ display: "grid", gap: "8px" }}>
+                        <div style={{ fontSize: "12px", color: "var(--text-muted)" }}>Environment status</div>
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
                         <InfoPill
                           icon={Database}
                           tone={activePipeline.output.tokenConfigured ? "success" : "warning"}
@@ -982,6 +1511,17 @@ export default function WorkflowsPage() {
                               : "Database ID missing"
                           }
                         />
+                        {activePipeline.output.board ? (
+                          <InfoPill
+                            icon={Database}
+                            tone={activePipeline.output.board.available ? "success" : "warning"}
+                            label={
+                              activePipeline.output.board.available
+                                ? `${activePipeline.output.board.source === "database" ? "Database" : "Data source"} live`
+                                : "Live Notion status unavailable"
+                            }
+                          />
+                        ) : null}
                       </div>
                     </div>
                   </div>

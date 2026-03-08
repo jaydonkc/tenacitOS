@@ -33,8 +33,10 @@ export const OPENCLAW_AGENTS_DIR = path.join(OPENCLAW_DIR, "agents");
 
 export interface OpenClawAgentConfig {
   id: string;
+  default?: boolean | null;
   name?: string | null;
   workspace?: string | null;
+  skills?: string[] | null;
   model?: {
     primary?: string | null;
   } | null;
@@ -105,6 +107,17 @@ export function resolveHostOpenClawPath(input?: string | null): string {
 
 export function readOpenClawConfig(): OpenClawConfig {
   return JSON.parse(fs.readFileSync(OPENCLAW_CONFIG, "utf-8")) as OpenClawConfig;
+}
+
+export function resolveDefaultAgentId(config: OpenClawConfig): string {
+  const agents = config.agents?.list || [];
+  if (agents.length === 0) {
+    return "main";
+  }
+
+  const defaultAgent = agents.find((agent) => agent.default === true) || agents[0];
+  const id = defaultAgent?.id?.trim();
+  return id || "main";
 }
 
 export function getDefaultModel(config: OpenClawConfig): string {

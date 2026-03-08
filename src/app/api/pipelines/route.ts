@@ -5,7 +5,7 @@ export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
-    return NextResponse.json(getPipelineDashboardSnapshot());
+    return NextResponse.json(await getPipelineDashboardSnapshot());
   } catch (error) {
     console.error("[pipelines] Error:", error);
     return NextResponse.json({ error: "Failed to load pipelines" }, { status: 500 });
