@@ -21,11 +21,17 @@ export function SetupWizard() {
 
   if (!data) return null;
 
+  const requiredEnv = data.checklist.env.filter((e) => e.required);
+  const missingRequiredEnv = requiredEnv.filter((e) => !e.configured);
+
   const steps = [
     {
-      label: "Required env vars",
-      done: data.checklist.env.filter((e) => e.required && e.configured).length === data.checklist.env.filter((e) => e.required).length,
-      detail: data.checklist.env.filter((e) => e.required && !e.configured).map((e) => e.key).join(", ") || "All required variables set",
+      label: requiredEnv.length > 0 ? "Required env vars" : "Environment overrides",
+      done: missingRequiredEnv.length === 0,
+      detail:
+        requiredEnv.length > 0
+          ? missingRequiredEnv.map((e) => e.key).join(", ") || "All required variables set"
+          : "No mandatory env vars. Defaults are used when overrides are unset.",
     },
     {
       label: "OpenClaw config detected",

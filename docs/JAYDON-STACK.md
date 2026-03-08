@@ -2,9 +2,7 @@
 
 ## Required env vars
 
-- `ADMIN_PASSWORD`
-- `AUTH_SECRET`
-- `OPENCLAW_GATEWAY_URL` (default `http://127.0.0.1:18789`)
+- None. TenacitOS uses sensible defaults when env overrides are unset.
 
 ## Recommended env vars
 
@@ -22,7 +20,7 @@ npm install
 npm run dev
 ```
 
-Open `http://localhost:3000`, login, then check:
+Open `http://localhost:3000`, then check:
 
 - Settings → OpenClaw Setup Checklist
 - Actions → Gateway Status / Restart Gateway / Gateway Logs

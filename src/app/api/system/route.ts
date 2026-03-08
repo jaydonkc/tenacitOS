@@ -7,7 +7,6 @@ import { OPENCLAW_WORKSPACE, WORKSPACE_IDENTITY } from '@/lib/paths';
 
 const WORKSPACE_PATH = OPENCLAW_WORKSPACE;
 const IDENTITY_PATH = WORKSPACE_IDENTITY;
-const ENV_LOCAL_PATH = path.join(process.cwd(), '.env.local');
 
 function parseIdentityMd(): { name: string; creature: string; emoji: string } {
   try {
@@ -130,37 +129,7 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const { action, data } = await request.json();
-    
-    if (action === 'change_password') {
-      const { currentPassword, newPassword } = data;
-      
-      // Read current .env.local
-      let envContent = '';
-      try {
-        envContent = fs.readFileSync(ENV_LOCAL_PATH, 'utf-8');
-      } catch {
-        return NextResponse.json({ error: 'Could not read configuration' }, { status: 500 });
-      }
-      
-      // Verify current password
-      const currentPassMatch = envContent.match(/AUTH_PASSWORD=(.+)/);
-      const storedPassword = currentPassMatch?.[1]?.trim();
-      
-      if (storedPassword !== currentPassword) {
-        return NextResponse.json({ error: 'Current password is incorrect' }, { status: 401 });
-      }
-      
-      // Update password
-      const newEnvContent = envContent.replace(
-        /AUTH_PASSWORD=.*/,
-        `AUTH_PASSWORD=${newPassword}`
-      );
-      
-      fs.writeFileSync(ENV_LOCAL_PATH, newEnvContent);
-      
-      return NextResponse.json({ success: true, message: 'Password updated successfully' });
-    }
+    const { action } = await request.json();
     
     if (action === 'clear_activity_log') {
       const activitiesPath = path.join(process.cwd(), 'data', 'activities.json');

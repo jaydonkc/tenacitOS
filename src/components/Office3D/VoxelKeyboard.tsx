@@ -15,7 +15,7 @@ export default function VoxelKeyboard({ position, rotation = [0, 0, 0] }: VoxelK
         <meshStandardMaterial color="#2d3748" roughness={0.8} />
       </Box>
 
-      {/* Fila de teclas - superior (números) */}
+      {/* Top row of keys (numbers) */}
       {Array.from({ length: 10 }).map((_, i) => (
         <Box
           key={`top-${i}`}

@@ -56,7 +56,7 @@ fi
 # Check 5: No hardcoded passwords/secrets in staged files
 echo ""
 echo "✓ Checking for potential secrets in staged files..."
-POTENTIAL_SECRETS=$(git diff --cached | grep -E "^+" | grep -iE "password.*=|secret.*=|api[_-]?key.*=|token.*=" | grep -v "ADMIN_PASSWORD\|AUTH_SECRET\|API_KEY\|placeholder\|example\|TODO" || true)
+POTENTIAL_SECRETS=$(git diff --cached | grep -E "^+" | grep -iE "password.*=|secret.*=|api[_-]?key.*=|token.*=" | grep -v "API_KEY\|placeholder\|example\|TODO" || true)
 if [ -n "$POTENTIAL_SECRETS" ]; then
   echo "⚠️  WARNING: Found potential secrets in staged changes:"
   echo "$POTENTIAL_SECRETS"

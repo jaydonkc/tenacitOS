@@ -19,7 +19,7 @@ A real-time dashboard and control center for [OpenClaw](https://openclaw.ai) AI 
 - **🔔 Notifications** — Real-time notification center with unread badge
 - **🏢 Office 3D** — Interactive 3D office with one desk per agent (React Three Fiber)
 - **📺 Terminal** — Read-only terminal for safe status commands
-- **🔐 Auth** — Password-protected with rate limiting and secure cookie
+- **⚙️ Setup Checklist** — Built-in checks for environment, gateway reachability, and OpenClaw config
 
 ---
 
@@ -94,16 +94,14 @@ cp .env.example .env.local
 Edit `.env.local`:
 
 ```env
-# --- Auth (required) ---
-# Strong password to log in to the dashboard
-ADMIN_PASSWORD=your-secure-password-here
-
-# Random secret used to sign the auth cookie
-# Generate with: openssl rand -base64 32
-AUTH_SECRET=your-random-32-char-secret-here
-
 # --- OpenClaw paths (optional — defaults work for standard installs) ---
 # OPENCLAW_DIR=/home/node/.openclaw
+
+# --- Gateway / integrations (optional — defaults work for standard installs) ---
+OPENCLAW_GATEWAY_URL=http://127.0.0.1:18789
+OPENCLAW_GATEWAY_TOKEN=
+OLLAMA_BASE_URL=http://127.0.0.1:11434
+AGENT_COMMS_HEALTH_URL=
 
 # --- Branding (customize for your instance) ---
 NEXT_PUBLIC_AGENT_NAME=Mission Control
@@ -149,7 +147,7 @@ Health hooks are available at:
 ```bash
 cd /home/node/.openclaw/workspace/tenacitOS
 cp .env.example .env.local
-# edit .env.local with at least ADMIN_PASSWORD, AUTH_SECRET, OPENCLAW_GATEWAY_URL
+# edit .env.local if you need non-default OpenClaw, gateway, or branding values
 npm install
 npm run dev
 ```
@@ -173,17 +171,7 @@ cp data/configured-skills.example.json data/configured-skills.json
 cp data/tasks.example.json data/tasks.json
 ```
 
-### 4. Generate secrets
-
-```bash
-# Auth secret
-openssl rand -base64 32
-
-# Password (or use a password manager)
-openssl rand -base64 18
-```
-
-### 5. Run
+### 4. Run
 
 ```bash
 # Development
@@ -195,9 +183,9 @@ npm run build
 npm start
 ```
 
-Login at `http://localhost:3000` with the `ADMIN_PASSWORD` you set.
+Open `http://localhost:3000`.
 
-### 6. Run with Docker (optional)
+### 5. Run with Docker (optional)
 
 ```bash
 # Build + run TenacitOS container
@@ -262,7 +250,7 @@ mission-control.yourdomain.com {
 }
 ```
 
-> When behind HTTPS, `secure: true` is set automatically on the auth cookie.
+> If you expose TenacitOS beyond localhost, put it behind HTTPS and a network boundary you control.
 
 ---
 
@@ -354,10 +342,10 @@ See [docs/COST-TRACKING.md](./docs/COST-TRACKING.md) for details.
 mission-control/
 ├── src/
 │   ├── app/
-│   │   ├── (dashboard)/      # Dashboard pages (protected)
+│   │   ├── (dashboard)/      # Dashboard pages
 │   │   ├── api/              # API routes
-│   │   ├── login/            # Login page
-│   │   └── office/           # 3D office (unprotected route)
+│   │   ├── login/            # Legacy redirect to the dashboard root
+│   │   └── office/           # 3D office route
 │   ├── components/
 │   │   ├── TenacitOS/        # OS-style UI shell (topbar, dock, status bar)
 │   │   └── Office3D/         # React Three Fiber 3D office
@@ -370,26 +358,17 @@ mission-control/
 │   └── models/               # GLB avatar models (add your own)
 ├── scripts/                  # Setup and data collection scripts
 ├── .env.example              # Environment variable template
-└── middleware.ts             # Auth guard for all routes
+└── README.md                 # Project overview and setup
 ```
 
 ---
 
 ## Security
 
-- All routes (including all `/api/*`) require authentication — handled by `src/middleware.ts`
-- `/api/auth/login` and `/api/health` are the only public endpoints
-- Login is rate-limited: **5 failed attempts → 15-minute lockout** per IP
-- Auth cookie is `httpOnly`, `sameSite: lax`, and `secure` in production
-- Terminal API uses a strict command allowlist — `env`, `curl`, `wget`, `node`, `python` are blocked
-- **Never commit `.env.local`** — it contains your credentials
-
-Generate fresh secrets:
-
-```bash
-openssl rand -base64 32   # AUTH_SECRET
-openssl rand -base64 18   # ADMIN_PASSWORD
-```
+- TenacitOS does not include built-in dashboard authentication. Restrict access with your reverse proxy, VPN, firewall, or private network.
+- Keep OpenClaw Gateway on loopback or protect it with `OPENCLAW_GATEWAY_TOKEN` when exposed outside localhost.
+- Terminal API uses a strict command allowlist — `env`, `curl`, `wget`, `node`, and `python` are blocked.
+- **Never commit `.env.local`** — it contains your local paths, tokens, and branding values.
 
 ---
 

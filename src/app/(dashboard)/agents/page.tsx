@@ -9,11 +9,10 @@ import {
   Shield,
   Users,
   Activity,
-  ExternalLink,
   GitBranch,
   LayoutGrid,
 } from "lucide-react";
-import { AgentOrganigrama } from "@/components/AgentOrganigrama";
+import { AgentHierarchy } from "@/components/AgentHierarchy";
 
 interface Agent {
   id: string;
@@ -39,7 +38,7 @@ interface Agent {
 export default function AgentsPage() {
   const [agents, setAgents] = useState<Agent[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<"cards" | "organigrama">("cards");
+  const [activeTab, setActiveTab] = useState<"cards" | "hierarchy">("cards");
 
   useEffect(() => {
     fetchAgents();
@@ -109,7 +108,7 @@ export default function AgentsPage() {
       <div className="flex gap-2 mb-6 border-b" style={{ borderColor: "var(--border)" }}>
         {[
           { id: "cards" as const, label: "Agent Cards", icon: LayoutGrid },
-          { id: "organigrama" as const, label: "Organigrama", icon: GitBranch },
+          { id: "hierarchy" as const, label: "Hierarchy", icon: GitBranch },
         ].map(({ id, label, icon: Icon }) => (
           <button
             key={id}
@@ -131,14 +130,14 @@ export default function AgentsPage() {
         ))}
       </div>
 
-      {/* Organigrama View */}
-      {activeTab === "organigrama" && (
+      {/* Hierarchy View */}
+      {activeTab === "hierarchy" && (
         <div className="rounded-xl" style={{ backgroundColor: "var(--card)", border: "1px solid var(--border)" }}>
           <div className="px-5 py-4" style={{ borderBottom: "1px solid var(--border)" }}>
             <h2 className="font-semibold" style={{ color: "var(--text-primary)" }}>Agent Hierarchy</h2>
             <p className="text-sm" style={{ color: "var(--text-muted)" }}>Visualization of agent communication allowances</p>
           </div>
-          <AgentOrganigrama agents={agents} />
+          <AgentHierarchy agents={agents} />
         </div>
       )}
 

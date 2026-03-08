@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
   Activity,
@@ -14,14 +14,12 @@ import {
   Puzzle,
   FolderOpen,
   Terminal,
-  LogOut,
   Settings,
   User,
   Menu,
   X,
   Users,
   Gamepad2,
-  GitBranch,
   Workflow,
   Zap,
   Server,
@@ -55,7 +53,6 @@ const navItems = [
 
 export function Sidebar() {
   const pathname = usePathname();
-  const router = useRouter();
   const [isOpen, setIsOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
 
@@ -73,13 +70,6 @@ export function Sidebar() {
     return () => window.removeEventListener("resize", checkMobile);
   }, []);
 
-  // Close sidebar when navigating on mobile
-  useEffect(() => {
-    if (isMobile) {
-      setIsOpen(false);
-    }
-  }, [pathname, isMobile]);
-
   // Prevent scroll when sidebar is open on mobile
   useEffect(() => {
     if (isOpen && isMobile) {
@@ -91,12 +81,6 @@ export function Sidebar() {
       document.body.style.overflow = "";
     };
   }, [isOpen, isMobile]);
-
-  const handleLogout = async () => {
-    await fetch("/api/auth/logout", { method: "POST" });
-    router.push("/login");
-    router.refresh();
-  };
 
   const toggleSidebar = () => setIsOpen(!isOpen);
   const closeSidebar = () => setIsOpen(false);
@@ -223,6 +207,7 @@ export function Sidebar() {
                 <li key={item.href}>
                   <Link
                     href={item.href}
+                    onClick={closeSidebar}
                     className={`nav-item w-full ${isActive ? "active" : ""}`}
                     style={
                       !isActive
@@ -263,6 +248,7 @@ export function Sidebar() {
         >
           <Link
             href="/settings"
+            onClick={closeSidebar}
             className={`nav-item w-full mb-2 ${pathname === "/settings" ? "active" : ""}`}
             style={
               pathname !== "/settings"
@@ -290,23 +276,6 @@ export function Sidebar() {
           >
             OpenClaw Agent
           </div>
-
-          <button
-            onClick={handleLogout}
-            className="flex items-center gap-3 px-4 py-2 w-full rounded-lg transition-colors"
-            style={{ color: "var(--text-muted)" }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.color = "var(--error)";
-              e.currentTarget.style.backgroundColor = "var(--card-elevated)";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.color = "var(--text-muted)";
-              e.currentTarget.style.backgroundColor = "transparent";
-            }}
-          >
-            <LogOut className="w-4 h-4" />
-            <span className="text-sm">Cerrar sesión</span>
-          </button>
         </div>
       </aside>
     </>

@@ -22,7 +22,7 @@ export default function AgentDesk({ agent, state, onClick, isSelected }: AgentDe
   const monitorRef = useRef<Mesh>(null);
   const [hovered, setHovered] = useState(false);
 
-  // Animación de pulsación para estado "thinking"
+  // Pulse animation for the "thinking" state
   useFrame((frameState) => {
     if (monitorRef.current && state.status === 'thinking') {
       monitorRef.current.scale.setScalar(1 + Math.sin(frameState.clock.elapsedTime * 2) * 0.05);

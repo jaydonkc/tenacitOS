@@ -18,8 +18,6 @@ cp .env.example .env.local
 Set at minimum:
 
 ```env
-ADMIN_PASSWORD=replace-with-strong-password
-AUTH_SECRET=$(openssl rand -base64 32)
 OPENCLAW_DIR=/home/node/.openclaw
 OPENCLAW_WORKSPACE=/home/node/.openclaw/workspace
 OPENCLAW_GATEWAY_URL=http://127.0.0.1:18789

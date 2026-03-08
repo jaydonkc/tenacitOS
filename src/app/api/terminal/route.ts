@@ -42,7 +42,7 @@ const BLOCKED_PATTERNS: RegExp[] = [
   /\breboot\b/,
   /\bkill\b/,
   /\bpkill\b/,
-  /\benv\b/,        // would expose env vars (ADMIN_PASSWORD, AUTH_SECRET)
+  /\benv\b/,        // would expose environment variables and secrets
   /\bprintenv\b/,   // same as env
   /\bcurl\b/,       // arbitrary HTTP requests / data exfiltration
   /\bwget\b/,       // arbitrary downloads

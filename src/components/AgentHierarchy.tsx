@@ -14,7 +14,7 @@ interface Agent {
   activeSessions: number;
 }
 
-interface AgentOrganigramaProps {
+interface AgentHierarchyProps {
   agents: Agent[];
 }
 
@@ -32,7 +32,7 @@ const NODE_H = 72;
 const H_GAP = 40;
 const V_GAP = 80;
 
-export function AgentOrganigrama({ agents }: AgentOrganigramaProps) {
+export function AgentHierarchy({ agents }: AgentHierarchyProps) {
   const [hoveredId, setHoveredId] = useState<string | null>(null);
 
   if (agents.length === 0) {
@@ -59,38 +59,6 @@ export function AgentOrganigrama({ agents }: AgentOrganigramaProps) {
 
   // Layout algorithm: compute positions
   const positions: NodePos[] = [];
-
-  function layoutAgent(agent: Agent, level: number, col: number): number {
-    const children = getChildren(agent.id);
-    let myCol = col;
-
-    if (children.length > 0) {
-      let childCol = col;
-      for (const child of children) {
-        childCol = layoutAgent(child, level + 1, childCol);
-      }
-      // Center over children
-      const firstChild = positions.find((p) => p.id === children[0].id);
-      const lastChild = positions.find((p) => p.id === children[children.length - 1].id);
-      if (firstChild && lastChild) {
-        myCol = Math.floor((firstChild.x + lastChild.x + NODE_W) / 2 - NODE_W / 2);
-      } else {
-        myCol = col;
-      }
-      return childCol;
-    } else {
-      myCol = col;
-      positions.push({
-        id: agent.id,
-        x: myCol,
-        y: level * (NODE_H + V_GAP),
-        width: NODE_W,
-        height: NODE_H,
-        agent,
-      });
-      return col + NODE_W + H_GAP;
-    }
-  }
 
   // Two-pass: first layout leaves, then parents
   // Simpler: DFS with position accumulator

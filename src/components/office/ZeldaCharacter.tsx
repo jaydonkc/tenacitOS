@@ -61,7 +61,7 @@ const AgentSprites: Record<string, React.ReactElement> = {
   ),
   studio: (
     <svg width="64" height="64" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
-      {/* Studio - Púrpura con auriculares */}
+      {/* Studio - purple with headphones */}
       {/* Body */}
       <rect x="20" y="26" width="24" height="24" fill="#a855f7" />
       <rect x="22" y="28" width="20" height="20" fill="#c084fc" />

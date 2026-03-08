@@ -4,14 +4,12 @@ import { useState } from "react";
 import {
   RefreshCw,
   FileText,
-  Key,
   Loader2,
   CheckCircle,
   AlertCircle,
   Activity,
   MessageSquare,
 } from "lucide-react";
-import { ChangePasswordModal } from "./ChangePasswordModal";
 
 interface QuickActionsProps {
   onActionComplete?: () => void;
@@ -21,13 +19,12 @@ interface ActionButton {
   id: string;
   label: string;
   icon: React.ComponentType<{ className?: string }>;
-  color: "emerald" | "blue" | "yellow" | "red" | "purple";
+  color: "emerald" | "blue" | "yellow" | "purple";
   action: () => Promise<void> | void;
 }
 
 export function QuickActions({ onActionComplete }: QuickActionsProps) {
   const [loadingAction, setLoadingAction] = useState<string | null>(null);
-  const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [notification, setNotification] = useState<{
     type: "success" | "error";
     message: string;
@@ -135,13 +132,6 @@ export function QuickActions({ onActionComplete }: QuickActionsProps) {
       color: "yellow",
       action: handleSessionPing,
     },
-    {
-      id: "change_password",
-      label: "Change Password",
-      icon: Key,
-      color: "red",
-      action: () => setShowPasswordModal(true),
-    },
   ];
 
   const colorClasses = {
@@ -152,69 +142,57 @@ export function QuickActions({ onActionComplete }: QuickActionsProps) {
       "bg-yellow-500/10 text-yellow-400 border-yellow-500/30 hover:bg-yellow-500/20",
     purple:
       "bg-purple-500/10 text-purple-400 border-purple-500/30 hover:bg-purple-500/20",
-    red: "bg-red-500/10 text-red-400 border-red-500/30 hover:bg-red-500/20",
   };
 
   return (
-    <>
-      <div className="bg-gray-900 rounded-xl p-6">
-        <h2 className="text-xl font-semibold text-white mb-6 flex items-center gap-2">
-          <RefreshCw className="w-5 h-5 text-emerald-400" />
-          Quick Actions
-        </h2>
+    <div className="bg-gray-900 rounded-xl p-6">
+      <h2 className="text-xl font-semibold text-white mb-6 flex items-center gap-2">
+        <RefreshCw className="w-5 h-5 text-emerald-400" />
+        Quick Actions
+      </h2>
 
-        {/* Notification */}
-        {notification && (
-          <div
-            className={`flex items-center gap-2 p-3 rounded-lg mb-4 ${
-              notification.type === "success"
-                ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/30"
-                : "bg-red-500/10 text-red-400 border border-red-500/30"
-            }`}
-          >
-            {notification.type === "success" ? (
-              <CheckCircle className="w-4 h-4" />
-            ) : (
-              <AlertCircle className="w-4 h-4" />
-            )}
-            <span className="text-sm">{notification.message}</span>
-          </div>
-        )}
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {actions.map((action) => {
-            const Icon = action.icon;
-            const isLoading = loadingAction === action.id;
-
-            return (
-              <button
-                key={action.id}
-                onClick={() => action.action()}
-                disabled={isLoading}
-                className={`flex items-center justify-center gap-2 px-4 py-3 rounded-lg border transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
-                  colorClasses[action.color]
-                }`}
-              >
-                {isLoading ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <Icon className="w-4 h-4" />
-                )}
-                <span className="font-medium">{action.label}</span>
-              </button>
-            );
-          })}
+      {/* Notification */}
+      {notification && (
+        <div
+          className={`flex items-center gap-2 p-3 rounded-lg mb-4 ${
+            notification.type === "success"
+              ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/30"
+              : "bg-red-500/10 text-red-400 border border-red-500/30"
+          }`}
+        >
+          {notification.type === "success" ? (
+            <CheckCircle className="w-4 h-4" />
+          ) : (
+            <AlertCircle className="w-4 h-4" />
+          )}
+          <span className="text-sm">{notification.message}</span>
         </div>
-      </div>
+      )}
 
-      <ChangePasswordModal
-        isOpen={showPasswordModal}
-        onClose={() => setShowPasswordModal(false)}
-        onSuccess={() => {
-          showNotification("success", "Password changed successfully");
-          setShowPasswordModal(false);
-        }}
-      />
-    </>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        {actions.map((action) => {
+          const Icon = action.icon;
+          const isLoading = loadingAction === action.id;
+
+          return (
+            <button
+              key={action.id}
+              onClick={() => action.action()}
+              disabled={isLoading}
+              className={`flex items-center justify-center gap-2 px-4 py-3 rounded-lg border transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+                colorClasses[action.color]
+              }`}
+            >
+              {isLoading ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Icon className="w-4 h-4" />
+              )}
+              <span className="font-medium">{action.label}</span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
   );
 }

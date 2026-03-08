@@ -26,14 +26,15 @@ We will respond within 48 hours and work with you to resolve the issue.
 
 ### For Deployment
 
-1. **Strong Passwords**
-   - Use at least 16 characters for `ADMIN_PASSWORD`
-   - Generate with: `openssl rand -base64 24`
+1. **Network Access**
+   - TenacitOS does not ship with built-in dashboard authentication
+   - Keep it behind a VPN, firewall, private network, or reverse proxy access control
+   - Prefer binding the app to localhost when possible
 
 2. **Secrets**
-   - Regenerate `AUTH_SECRET` for each instance
-   - Generate with: `openssl rand -base64 32`
    - Never commit `.env.local` to git
+   - Protect `OPENCLAW_GATEWAY_TOKEN` if gateway auth is enabled
+   - Rotate any exposed API tokens promptly
 
 3. **File Permissions**
    - Ensure `.env.local` is readable only by the app user:
@@ -47,8 +48,8 @@ We will respond within 48 hours and work with you to resolve the issue.
 
 4. **Reverse Proxy**
    - Always use HTTPS in production (Caddy auto-handles this)
-   - Configure rate limiting if exposing publicly
-   - Whitelist trusted IPs for admin endpoints
+   - Configure IP allowlists or access control if exposing publicly
+   - Add rate limiting at the proxy layer if needed
 
 5. **OpenClaw Gateway**
    - Keep gateway on loopback (127.0.0.1) if possible
@@ -83,9 +84,9 @@ We will respond within 48 hours and work with you to resolve the issue.
 
 ### Authentication
 
-- Basic password auth (no 2FA yet)
-- Session tokens in cookies (httpOnly, secure in production)
-- TODO: Add OAuth2 / SAML support
+- No app-level authentication is bundled
+- Deploy behind your own access controls if the UI is reachable outside localhost
+- TODO: Add optional auth integrations if public deployment becomes a target
 
 ### Data Storage
 
@@ -103,8 +104,7 @@ We will respond within 48 hours and work with you to resolve the issue.
 
 Before deploying to production:
 
-- [ ] Changed `ADMIN_PASSWORD` from default
-- [ ] Regenerated `AUTH_SECRET`
+- [ ] Restricted dashboard access with network controls or reverse proxy auth
 - [ ] Set file permissions on `.env.local` (600)
 - [ ] Configured HTTPS via reverse proxy
 - [ ] Reviewed `openclaw status` security audit

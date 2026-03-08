@@ -24,7 +24,7 @@ export default function VoxelMacMini({ position }: VoxelMacMiniProps) {
         <meshStandardMaterial color="#9ca3af" emissive="#6b7280" emissiveIntensity={0.3} />
       </Box>
 
-      {/* Puertos frontales (pequeños rectángulos negros) */}
+      {/* Front ports (small black rectangles) */}
       <Box args={[0.015, 0.008, 0.005]} position={[-0.04, 0.03, 0.105]} castShadow>
         <meshStandardMaterial color="#1f2937" />
       </Box>

@@ -3,7 +3,7 @@ import { existsSync, readFileSync } from "fs";
 import { execSync } from "child_process";
 import { getGatewayConfig, gatewayGet } from "@/lib/openclaw-gateway";
 
-const required = ["ADMIN_PASSWORD", "AUTH_SECRET", "OPENCLAW_GATEWAY_URL"];
+const required: string[] = [];
 const recommended = ["OPENCLAW_DIR", "OPENCLAW_WORKSPACE", "OPENCLAW_GATEWAY_TOKEN", "OLLAMA_BASE_URL", "AGENT_COMMS_HEALTH_URL"];
 
 function envSnapshot() {
