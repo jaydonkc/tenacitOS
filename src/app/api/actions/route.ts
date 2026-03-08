@@ -55,11 +55,16 @@ async function runAction(action: string): Promise<ActionResult> {
       case 'restart-gateway': {
         const { stdout, stderr } = await execAsync('openclaw gateway restart 2>&1 || systemctl restart openclaw-gateway 2>&1 || echo "Gateway restart command failed"');
         output = stdout || stderr || 'Restart command executed';
-        // Also check status
         try {
           const { stdout: status } = await execAsync('openclaw gateway status 2>&1 || systemctl is-active openclaw-gateway 2>&1 || echo "unknown"');
           output += `\nStatus: ${status.trim()}`;
         } catch {}
+        break;
+      }
+
+      case 'gateway-status': {
+        const { stdout, stderr } = await execAsync('openclaw gateway status 2>&1 || systemctl status openclaw-gateway --no-pager 2>&1 || echo "unknown"');
+        output = stdout || stderr || 'Gateway status unavailable';
         break;
       }
 
@@ -116,6 +121,12 @@ async function runAction(action: string): Promise<ActionResult> {
         const { stdout: cpu } = await execAsync("top -bn1 | grep 'Cpu(s)' | head -1");
         const { stdout: uptime } = await execAsync('uptime -p');
         output = `Workspace: ${du.trim()}\n\nDisk: ${df.trim()}\n\nMemory:\n${mem.trim()}\n\nCPU: ${cpu.trim()}\n\nUptime: ${uptime.trim()}`;
+        break;
+      }
+
+      case 'session-ping': {
+        const { stdout, stderr } = await execAsync('openclaw sessions list --json 2>/dev/null | node -e "let d=\"\";process.stdin.on(\"data\",c=>d+=c).on(\"end\",()=>{const j=JSON.parse(d||\"{}\");const s=(j.sessions||[]).find(x=>x.key && x.key.includes(\":main\"));if(!s){console.log(\"No main session found\");return;}console.log(`Main session: ${s.key}\\nupdatedAt: ${s.updatedAt}\\nmodel: ${s.model||\"unknown\"}`)})" 2>&1 || echo "Could not inspect sessions"');
+        output = stdout || stderr || 'Session check complete';
         break;
       }
 
@@ -189,6 +200,7 @@ export async function POST(request: NextRequest) {
     const validActions = [
       'git-status',
       'restart-gateway',
+      'gateway-status',
       'gateway-health',
       'gateway-logs',
       'check-docker',
@@ -196,6 +208,7 @@ export async function POST(request: NextRequest) {
       'check-agent-comms',
       'clear-temp',
       'usage-stats',
+      'session-ping',
       'heartbeat',
       'npm-audit',
     ];

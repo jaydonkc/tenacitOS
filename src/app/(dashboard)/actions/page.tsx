@@ -27,10 +27,17 @@ interface QuickAction {
 const ACTIONS: QuickAction[] = [
   {
     id: "heartbeat",
-    label: "Check Heartbeat",
-    description: "Verify all services are up and the site is reachable",
+    label: "OpenClaw Heartbeat",
+    description: "Verify key services and endpoint reachability",
     icon: Heart,
     color: "var(--success)",
+  },
+  {
+    id: "gateway-status",
+    label: "Gateway Status",
+    description: "Inspect openclaw gateway service state",
+    icon: Terminal,
+    color: "#a78bfa",
   },
   {
     id: "git-status",
@@ -45,6 +52,13 @@ const ACTIONS: QuickAction[] = [
     description: "Get disk, CPU, and memory usage summary",
     icon: BarChart3,
     color: "#C084FC",
+  },
+  {
+    id: "session-ping",
+    label: "Probe Main Session",
+    description: "Quick check that main conversation session is active",
+    icon: Play,
+    color: "#f59e0b",
   },
   {
     id: "restart-gateway",

@@ -5,6 +5,7 @@ import { Settings, RefreshCw } from "lucide-react";
 import { SystemInfo } from "@/components/SystemInfo";
 import { IntegrationStatus } from "@/components/IntegrationStatus";
 import { QuickActions } from "@/components/QuickActions";
+import { SetupWizard } from "@/components/SetupWizard";
 
 interface SystemData {
   agent: {
@@ -75,10 +76,10 @@ export default function SettingsPage() {
             style={{ color: "var(--text-primary)", fontFamily: "var(--font-heading)" }}
           >
             <Settings className="w-6 h-6 md:w-8 md:h-8" style={{ color: "var(--accent)" }} />
-            Settings
+            OpenClaw Control Plane
           </h1>
           <p className="text-sm md:text-base" style={{ color: "var(--text-secondary)" }}>
-            System status, integrations, and configuration
+            Gateway health, setup checklist, integrations, and operations
           </p>
         </div>
 
@@ -106,6 +107,10 @@ export default function SettingsPage() {
 
       {/* Grid Layout */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
+        <div className="lg:col-span-2">
+          <SetupWizard />
+        </div>
+
         {/* System Info - Full width on first row */}
         <div className="lg:col-span-2">
           <SystemInfo data={systemData} />

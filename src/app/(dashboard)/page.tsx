@@ -45,6 +45,7 @@ interface Agent {
 export default function DashboardPage() {
   const [stats, setStats] = useState<Stats>({ total: 0, today: 0, success: 0, error: 0, byType: {} });
   const [agents, setAgents] = useState<Agent[]>([]);
+  const [showHeavyPanels, setShowHeavyPanels] = useState(false);
 
   useEffect(() => {
     Promise.all([
@@ -60,6 +61,9 @@ export default function DashboardPage() {
       });
       setAgents(agentsData.agents || []);
     }).catch(console.error);
+
+    const t = setTimeout(() => setShowHeavyPanels(true), 450);
+    return () => clearTimeout(t);
   }, []);
 
   return (
@@ -74,10 +78,10 @@ export default function DashboardPage() {
             letterSpacing: '-1.5px'
           }}
         >
-          🦞 Mission Control
+          🦞 OpenClaw Mission Control
         </h1>
         <p style={{ color: 'var(--text-secondary)', fontSize: '14px' }}>
-          Overview of Tenacitas agent activity
+          Summary-first overview of gateway health, agents, and recent execution
         </p>
       </div>
 
@@ -139,7 +143,7 @@ export default function DashboardPage() {
               }}
             >
               <Users className="inline-block w-5 h-5 mr-2 mb-1" />
-              Multi-Agent System
+              OpenClaw Agent Mesh
             </h2>
           </div>
           <div className="flex gap-2">
@@ -252,7 +256,11 @@ export default function DashboardPage() {
             </a>
           </div>
           <div className="p-0">
-            <ActivityFeed limit={5} />
+            {showHeavyPanels ? (
+              <ActivityFeed limit={5} />
+            ) : (
+              <div className="p-6 text-sm" style={{ color: 'var(--text-muted)' }}>Loading activity stream…</div>
+            )}
           </div>
         </div>
 
@@ -304,9 +312,9 @@ export default function DashboardPage() {
             ))}
           </div>
 
-          {/* Notepad */}
+          {/* Deferred Notepad */}
           <div style={{ margin: "1rem", marginTop: "0.5rem" }}>
-            <Notepad />
+            {showHeavyPanels ? <Notepad /> : <div className="text-xs" style={{ color: 'var(--text-muted)' }}>Notepad initializing…</div>}
           </div>
         </div>
       </div>

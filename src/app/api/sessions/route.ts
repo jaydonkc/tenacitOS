@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { execSync } from 'child_process';
 import { readFileSync, existsSync } from 'fs';
 import { join } from 'path';
+import { gatewayGet, gatewayRpc } from '@/lib/openclaw-gateway';
 
 const OPENCLAW_DIR = process.env.OPENCLAW_DIR || '/home/node/.openclaw';
 
@@ -118,13 +119,24 @@ export async function GET(request: NextRequest) {
 
 async function listSessions(): Promise<NextResponse> {
   try {
-    const output = execSync('openclaw sessions list --json 2>/dev/null', {
-      timeout: 10000,
-      encoding: 'utf-8',
-    });
+    let rawSessions: RawSession[] = [];
 
-    const data = JSON.parse(output);
-    const rawSessions: RawSession[] = data.sessions || [];
+    const rpc = await gatewayRpc<{ sessions?: RawSession[] }>('sessions.list', {});
+    if (rpc?.sessions && Array.isArray(rpc.sessions)) {
+      rawSessions = rpc.sessions;
+    } else {
+      const rest = await gatewayGet<{ sessions?: RawSession[] }>(['/api/sessions', '/sessions']);
+      if (rest?.sessions && Array.isArray(rest.sessions)) {
+        rawSessions = rest.sessions;
+      } else {
+        const output = execSync('openclaw sessions list --json 2>/dev/null', {
+          timeout: 10000,
+          encoding: 'utf-8',
+        });
+        const data = JSON.parse(output);
+        rawSessions = data.sessions || [];
+      }
+    }
 
     const sessions: ParsedSession[] = rawSessions
       .reduce<ParsedSession[]>((acc, raw) => {

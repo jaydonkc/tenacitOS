@@ -3,12 +3,13 @@
 import { useState } from "react";
 import {
   RefreshCw,
-  Trash2,
   FileText,
   Key,
   Loader2,
   CheckCircle,
   AlertCircle,
+  Activity,
+  MessageSquare,
 } from "lucide-react";
 import { ChangePasswordModal } from "./ChangePasswordModal";
 
@@ -20,7 +21,7 @@ interface ActionButton {
   id: string;
   label: string;
   icon: React.ComponentType<{ className?: string }>;
-  color: "emerald" | "blue" | "yellow" | "red";
+  color: "emerald" | "blue" | "yellow" | "red" | "purple";
   action: () => Promise<void> | void;
 }
 
@@ -67,26 +68,6 @@ export function QuickActions({ onActionComplete }: QuickActionsProps) {
     }
   };
 
-  const handleClearActivityLog = async () => {
-    setLoadingAction("clear_log");
-    try {
-      const res = await fetch("/api/system", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "clear_activity_log" }),
-      });
-
-      if (!res.ok) throw new Error("Failed to clear log");
-
-      showNotification("success", "Activity log cleared successfully");
-      onActionComplete?.();
-    } catch {
-      showNotification("error", "Failed to clear activity log");
-    } finally {
-      setLoadingAction(null);
-    }
-  };
-
   const handleViewLogs = async () => {
     setLoadingAction("view_logs");
     try {
@@ -95,6 +76,31 @@ export function QuickActions({ onActionComplete }: QuickActionsProps) {
       onActionComplete?.();
     } catch {
       showNotification("error", "Failed to fetch gateway logs");
+    } finally {
+      setLoadingAction(null);
+    }
+  };
+
+  const handleGatewayStatus = async () => {
+    setLoadingAction("gateway_status");
+    try {
+      await runAction("gateway-status");
+      showNotification("success", "Gateway status refreshed");
+      onActionComplete?.();
+    } catch {
+      showNotification("error", "Failed to check gateway status");
+    } finally {
+      setLoadingAction(null);
+    }
+  };
+
+  const handleSessionPing = async () => {
+    setLoadingAction("session_ping");
+    try {
+      await runAction("session-ping");
+      showNotification("success", "Main session probe completed");
+    } catch {
+      showNotification("error", "Failed to probe main session");
     } finally {
       setLoadingAction(null);
     }
@@ -109,18 +115,25 @@ export function QuickActions({ onActionComplete }: QuickActionsProps) {
       action: handleRestartGateway,
     },
     {
-      id: "clear_log",
-      label: "Clear Activity Log",
-      icon: Trash2,
-      color: "yellow",
-      action: handleClearActivityLog,
+      id: "gateway_status",
+      label: "Gateway Status",
+      icon: Activity,
+      color: "purple",
+      action: handleGatewayStatus,
     },
     {
       id: "view_logs",
-      label: "View Gateway Logs",
+      label: "Gateway Logs",
       icon: FileText,
       color: "emerald",
       action: handleViewLogs,
+    },
+    {
+      id: "session_ping",
+      label: "Probe Main Session",
+      icon: MessageSquare,
+      color: "yellow",
+      action: handleSessionPing,
     },
     {
       id: "change_password",
@@ -137,6 +150,8 @@ export function QuickActions({ onActionComplete }: QuickActionsProps) {
     blue: "bg-blue-500/10 text-blue-400 border-blue-500/30 hover:bg-blue-500/20",
     yellow:
       "bg-yellow-500/10 text-yellow-400 border-yellow-500/30 hover:bg-yellow-500/20",
+    purple:
+      "bg-purple-500/10 text-purple-400 border-purple-500/30 hover:bg-purple-500/20",
     red: "bg-red-500/10 text-red-400 border-red-500/30 hover:bg-red-500/20",
   };
 

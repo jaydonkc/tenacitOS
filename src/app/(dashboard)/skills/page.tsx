@@ -94,7 +94,7 @@ export default function SkillsPage() {
             marginBottom: "4px",
           }}
         >
-          Skills Manager
+          OpenClaw Skills Registry
         </h1>
         <p
           style={{
@@ -103,7 +103,7 @@ export default function SkillsPage() {
             color: "var(--text-secondary)",
           }}
         >
-          Skills disponibles en el sistema OpenClaw
+          Runtime-discovered skills from gateway and filesystem
         </p>
       </div>
 
@@ -155,7 +155,7 @@ export default function SkillsPage() {
           />
           <input
             type="text"
-            placeholder="Buscar skills..."
+            placeholder="Search skills by name, id, description..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             style={{
@@ -191,7 +191,7 @@ export default function SkillsPage() {
               transition: "all 150ms ease",
             }}
           >
-            Todas ({skills.length})
+            All ({skills.length})
           </button>
           <button
             onClick={() => setFilterSource("workspace")}
@@ -248,7 +248,7 @@ export default function SkillsPage() {
               margin: "0 auto 16px",
             }}
           />
-          <p style={{ color: "var(--text-secondary)" }}>No se encontraron skills</p>
+          <p style={{ color: "var(--text-secondary)" }}>No matching skills found</p>
         </div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: "32px" }}>
@@ -502,7 +502,7 @@ function SkillDetailModal({ skill, onClose }: { skill: Skill; onClose: () => voi
               </p>
               <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
                 <div className="badge-positive">{skill.source}</div>
-                <div className="badge-info">{skill.fileCount} archivos</div>
+                <div className="badge-info">{skill.fileCount} files</div>
                 {skill.agents && skill.agents.length > 0 && skill.agents.map((agent) => (
                   <div
                     key={agent}
@@ -554,7 +554,7 @@ function SkillDetailModal({ skill, onClose }: { skill: Skill; onClose: () => voi
               marginBottom: "12px",
             }}
           >
-            Archivos ({skill.files.length})
+            Files ({skill.files.length})
           </h3>
           <div
             style={{

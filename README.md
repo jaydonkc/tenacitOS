@@ -141,7 +141,27 @@ AGENT_COMMS_HEALTH_URL=http://127.0.0.1:8787/health
 Health hooks are available at:
 
 - `GET /api/integrations/health` (gateway + Docker + Ollama + optional agent-comms)
-- `POST /api/actions` with actions: `gateway-health`, `check-docker`, `check-ollama`, `check-agent-comms`, `gateway-logs`
+- `GET /api/setup/status` (env checklist + openclaw.json detection + gateway connectivity)
+- `POST /api/actions` with actions: `gateway-status`, `restart-gateway`, `gateway-health`, `gateway-logs`, `session-ping`, `check-docker`, `check-ollama`, `check-agent-comms`
+
+### Jaydon run flow (exact order)
+
+```bash
+cd /home/node/.openclaw/workspace/tenacitOS
+cp .env.example .env.local
+# edit .env.local with at least ADMIN_PASSWORD, AUTH_SECRET, OPENCLAW_GATEWAY_URL
+npm install
+npm run dev
+```
+
+Then in the UI:
+
+1. Go to **Settings → OpenClaw Control Plane**
+2. Complete the **OpenClaw Setup Checklist**
+3. Confirm gateway status from quick actions
+4. Visit **Agents / Sessions / Cron / Skills** and verify data is live
+
+If gateway-backed data is unavailable, TenacitOS falls back to CLI/filesystem reads automatically.
 
 ### 3. Initialize data files
 
