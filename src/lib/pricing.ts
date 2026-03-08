@@ -10,6 +10,8 @@ export interface ModelPricing {
   alias?: string;
   inputPricePerMillion: number;
   outputPricePerMillion: number;
+  cacheReadPricePerMillion?: number;
+  cacheWritePricePerMillion?: number;
   contextWindow: number;
 }
 
@@ -21,6 +23,8 @@ export const MODEL_PRICING: ModelPricing[] = [
     alias: "opus",
     inputPricePerMillion: 15.00,
     outputPricePerMillion: 75.00,
+    cacheReadPricePerMillion: 1.50,
+    cacheWritePricePerMillion: 18.75,
     contextWindow: 200000,
   },
   {
@@ -29,6 +33,8 @@ export const MODEL_PRICING: ModelPricing[] = [
     alias: "sonnet",
     inputPricePerMillion: 3.00,
     outputPricePerMillion: 15.00,
+    cacheReadPricePerMillion: 0.30,
+    cacheWritePricePerMillion: 3.75,
     contextWindow: 200000,
   },
   {
@@ -37,7 +43,19 @@ export const MODEL_PRICING: ModelPricing[] = [
     alias: "haiku",
     inputPricePerMillion: 0.80,
     outputPricePerMillion: 4.00,
+    cacheReadPricePerMillion: 0.08,
+    cacheWritePricePerMillion: 1.00,
     contextWindow: 200000,
+  },
+  {
+    id: "gpt-5.3-codex",
+    name: "GPT-5.3 Codex",
+    alias: "openai-codex/gpt-5.3-codex",
+    inputPricePerMillion: 1.75,
+    outputPricePerMillion: 14.00,
+    cacheReadPricePerMillion: 0.175,
+    cacheWritePricePerMillion: 0,
+    contextWindow: 272000,
   },
   // Google Gemini models
   {
@@ -81,7 +99,9 @@ export const MODEL_PRICING: ModelPricing[] = [
 export function calculateCost(
   modelId: string,
   inputTokens: number,
-  outputTokens: number
+  outputTokens: number,
+  cacheReadTokens = 0,
+  cacheWriteTokens = 0
 ): number {
   const pricing = MODEL_PRICING.find(
     (p) => p.id === modelId || p.alias === modelId
@@ -97,8 +117,12 @@ export function calculateCost(
 
   const inputCost = (inputTokens / 1_000_000) * pricing.inputPricePerMillion;
   const outputCost = (outputTokens / 1_000_000) * pricing.outputPricePerMillion;
+  const cacheReadCost =
+    (cacheReadTokens / 1_000_000) * (pricing.cacheReadPricePerMillion || 0);
+  const cacheWriteCost =
+    (cacheWriteTokens / 1_000_000) * (pricing.cacheWritePricePerMillion || 0);
 
-  return inputCost + outputCost;
+  return inputCost + outputCost + cacheReadCost + cacheWriteCost;
 }
 
 /**
@@ -123,6 +147,8 @@ export function normalizeModelId(modelId: string): string {
     haiku: "anthropic/claude-haiku-3-5",
     "gemini-flash": "google/gemini-2.5-flash",
     "gemini-pro": "google/gemini-2.5-pro",
+    "gpt-5.3-codex": "gpt-5.3-codex",
+    "openai-codex/gpt-5.3-codex": "gpt-5.3-codex",
     // OpenClaw format (without provider/)
     "claude-opus-4-6": "anthropic/claude-opus-4-6",
     "claude-sonnet-4-5": "anthropic/claude-sonnet-4-5",

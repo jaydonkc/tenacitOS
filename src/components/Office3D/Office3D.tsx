@@ -2,11 +2,11 @@
 
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls, Sky, Environment } from '@react-three/drei';
-import { Suspense, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { Vector3 } from 'three';
-import { AGENTS } from './agentsConfig';
-import type { AgentState } from './agentsConfig';
-import AgentDesk from './AgentDesk';
+import { AGENTS, getIdleAgentState } from './agentsConfig';
+import type { AgentConfig, AgentState } from './agentsConfig';
+import AgentDeskView from './AgentDeskView';
 import Floor from './Floor';
 import Walls from './Walls';
 import Lights from './Lights';
@@ -19,21 +19,98 @@ import WallClock from './WallClock';
 import FirstPersonControls from './FirstPersonControls';
 import MovingAvatar from './MovingAvatar';
 
+interface OfficeAgentResponse {
+  id: string;
+  name: string;
+  emoji: string;
+  color: string;
+  role: string;
+  currentTask?: string;
+  isActive?: boolean;
+  status?: AgentState["status"];
+  model?: string;
+  activeSessions?: number;
+  lastSeen?: number;
+}
+
+function buildFallbackStates(): Record<string, AgentState> {
+  return Object.fromEntries(
+    AGENTS.map((agent) => [agent.id, getIdleAgentState(agent.id)])
+  );
+}
+
 export default function Office3D() {
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
   const [interactionModal, setInteractionModal] = useState<string | null>(null);
   const [controlMode, setControlMode] = useState<'orbit' | 'fps'>('orbit');
-  const [avatarPositions, setAvatarPositions] = useState<Map<string, any>>(new Map());
-  
-  // Mock data - TODO: Replace with real API data
-  const [agentStates] = useState<Record<string, AgentState>>({
-    main: { id: 'main', status: 'working', currentTask: 'Processing emails', model: 'opus', tokensPerHour: 15000, tasksInQueue: 3, uptime: 12 },
-    academic: { id: 'academic', status: 'idle', model: 'sonnet', tokensPerHour: 0, tasksInQueue: 0, uptime: 8 },
-    studio: { id: 'studio', status: 'thinking', currentTask: 'Drafting a YouTube script', model: 'opus', tokensPerHour: 8000, tasksInQueue: 1, uptime: 5 },
-    linkedin: { id: 'linkedin', status: 'working', currentTask: 'Writing a LinkedIn post', model: 'sonnet', tokensPerHour: 5000, tasksInQueue: 2, uptime: 10 },
-    social: { id: 'social', status: 'idle', model: 'sonnet', tokensPerHour: 0, tasksInQueue: 0, uptime: 7 },
-    infra: { id: 'infra', status: 'error', currentTask: 'Failed deployment', model: 'haiku', tokensPerHour: 1000, tasksInQueue: 0, uptime: 15 },
-  });
+  const [avatarPositions, setAvatarPositions] = useState<Map<string, Vector3>>(new Map());
+  const [officeAgents, setOfficeAgents] = useState<AgentConfig[]>(AGENTS);
+  const [agentStates, setAgentStates] = useState<Record<string, AgentState>>(buildFallbackStates);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadOffice = async () => {
+      try {
+        const res = await fetch('/api/office', { cache: 'no-store' });
+        if (!res.ok) {
+          return;
+        }
+
+        const data = await res.json();
+        const liveAgents = Array.isArray(data.agents) ? (data.agents as OfficeAgentResponse[]) : [];
+        if (cancelled || liveAgents.length === 0) {
+          return;
+        }
+
+        const liveMap = new Map(liveAgents.map((agent) => [agent.id, agent]));
+        const nextAgents = AGENTS.map((layout) => {
+          const live = liveMap.get(layout.id);
+          if (!live) {
+            return layout;
+          }
+          return {
+            ...layout,
+            name: live.name || layout.name,
+            emoji: live.emoji || layout.emoji,
+            color: live.color || layout.color,
+            role: live.role || layout.role,
+          };
+        });
+
+        const nextStates = Object.fromEntries(
+          nextAgents.map((agent) => {
+            const live = liveMap.get(agent.id);
+            return [
+              agent.id,
+              {
+                id: agent.id,
+                status: live?.status || 'idle',
+                currentTask: live?.currentTask,
+                model: live?.model,
+                tokensPerHour: live?.activeSessions ? live.activeSessions * 5000 : 0,
+                tasksInQueue: live?.activeSessions || 0,
+                uptime: live?.lastSeen ? Math.max(1, Math.round((Date.now() - live.lastSeen) / 86400000)) : 0,
+              } satisfies AgentState,
+            ];
+          })
+        ) as Record<string, AgentState>;
+
+        setOfficeAgents(nextAgents);
+        setAgentStates(nextStates);
+      } catch {
+        // Keep static layout if live office data is unavailable.
+      }
+    };
+
+    loadOffice();
+    const interval = window.setInterval(loadOffice, 15000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, []);
 
   const handleDeskClick = (agentId: string) => {
     setSelectedAgent(agentId);
@@ -59,14 +136,14 @@ export default function Office3D() {
     setInteractionModal(null);
   };
 
-  const handleAvatarPositionUpdate = (id: string, position: any) => {
+  const handleAvatarPositionUpdate = (id: string, position: Vector3) => {
     setAvatarPositions(prev => new Map(prev).set(id, position));
   };
 
   // Define furniture as movement obstacles
   const obstacles = [
     // Escritorios (6)
-    ...AGENTS.map(agent => ({
+    ...officeAgents.map(agent => ({
       position: new Vector3(agent.position[0], 0, agent.position[2]),
       radius: 1.5
     })),
@@ -111,22 +188,22 @@ export default function Office3D() {
           <Walls />
 
           {/* Agent desks without avatars */}
-          {AGENTS.map((agent) => (
-            <AgentDesk
+          {officeAgents.map((agent) => (
+            <AgentDeskView
               key={agent.id}
               agent={agent}
-              state={agentStates[agent.id]}
+              state={agentStates[agent.id] ?? getIdleAgentState(agent.id)}
               onClick={() => handleDeskClick(agent.id)}
               isSelected={selectedAgent === agent.id}
             />
           ))}
 
           {/* Moving avatars */}
-          {AGENTS.map((agent) => (
+          {officeAgents.map((agent) => (
             <MovingAvatar
               key={`avatar-${agent.id}`}
               agent={agent}
-              state={agentStates[agent.id]}
+              state={agentStates[agent.id] ?? getIdleAgentState(agent.id)}
               officeBounds={{ minX: -8, maxX: 8, minZ: -7, maxZ: 7 }}
               obstacles={obstacles}
               otherAvatarPositions={avatarPositions}
@@ -175,10 +252,10 @@ export default function Office3D() {
       </Canvas>
 
       {/* Side panel shown when an agent is selected */}
-      {selectedAgent && (
+      {selectedAgent && officeAgents.find((agent) => agent.id === selectedAgent) && (
         <AgentPanel
-          agent={AGENTS.find(a => a.id === selectedAgent)!}
-          state={agentStates[selectedAgent]}
+          agent={officeAgents.find((agent) => agent.id === selectedAgent)!}
+          state={agentStates[selectedAgent] ?? getIdleAgentState(selectedAgent)}
           onClose={handleClosePanel}
         />
       )}

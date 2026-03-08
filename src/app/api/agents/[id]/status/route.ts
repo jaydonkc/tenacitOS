@@ -1,38 +1,42 @@
+import fs from "fs";
+import path from "path";
 import { NextResponse } from "next/server";
-import { readFileSync, readdirSync, statSync } from "fs";
-import { join } from "path";
+import { tryRunOpenClawJson } from "@/lib/openclaw-cli";
+import { getAgentWorkspace, getDefaultModel, readOpenClawConfig } from "@/lib/openclaw-runtime";
 
 export const dynamic = "force-dynamic";
 
+interface RawSession {
+  key: string;
+  agentId?: string;
+  sessionId?: string;
+  updatedAt?: number;
+  model?: string;
+}
+
 export async function GET(
-  request: Request,
+  _request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { id } = await params;
+    const config = readOpenClawConfig();
+    const agent = (config.agents?.list || []).find((candidate) => candidate.id === id);
 
-    // Read openclaw config
-    const configPath = (process.env.OPENCLAW_DIR || "/home/node/.openclaw") + "/openclaw.json";
-    const config = JSON.parse(readFileSync(configPath, "utf-8"));
-
-    // Find agent
-    const agent = config.agents.list.find((a: any) => a.id === id);
     if (!agent) {
       return NextResponse.json({ error: "Agent not found" }, { status: 404 });
     }
 
-    // Get memory files
-    const memoryPath = join(agent.workspace, "memory");
-    let recentFiles: Array<{ date: string; size: number; modified: string }> =
-      [];
+    const workspace = getAgentWorkspace(agent, config);
+    const memoryPath = path.join(workspace, "memory");
+    let recentFiles: Array<{ date: string; size: number; modified: string }> = [];
 
     try {
-      const files = readdirSync(memoryPath).filter((f) =>
-        f.match(/^\d{4}-\d{2}-\d{2}\.md$/)
-      );
-      recentFiles = files
+      recentFiles = fs
+        .readdirSync(memoryPath)
+        .filter((file) => file.match(/^\d{4}-\d{2}-\d{2}\.md$/))
         .map((file) => {
-          const stat = statSync(join(memoryPath, file));
+          const stat = fs.statSync(path.join(memoryPath, file));
           return {
             date: file.replace(".md", ""),
             size: stat.size,
@@ -41,26 +45,31 @@ export async function GET(
         })
         .sort((a, b) => b.date.localeCompare(a.date))
         .slice(0, 7);
-    } catch (e) {
-      // Memory directory doesn't exist
+    } catch {
+      recentFiles = [];
     }
 
-    // Get session info (from OpenClaw API if available)
-    // For now, we return mock data
-    const sessions: Array<any> = [];
+    const sessionIndex = tryRunOpenClawJson<{ sessions?: RawSession[] }>(["sessions", "--json", "--all-agents"]);
+    const sessions = (sessionIndex?.sessions || [])
+      .filter((session) => (session.agentId || session.key.split(":")[1]) === id)
+      .map((session) => ({
+        id: session.sessionId || session.key,
+        key: session.key,
+        updatedAt: session.updatedAt || null,
+        model: session.model || null,
+      }));
 
-    // Get telegram account info
     const telegramAccount = config.channels?.telegram?.accounts?.[id];
 
     return NextResponse.json({
       agent: {
         id: agent.id,
-        name: agent.name,
-        model: agent.model?.primary || config.agents.defaults.model.primary,
-        workspace: agent.workspace,
-        dmPolicy: telegramAccount?.dmPolicy,
+        name: agent.name || id,
+        model: agent.model?.primary || getDefaultModel(config),
+        workspace,
+        dmPolicy: telegramAccount?.dmPolicy || config.channels?.telegram?.dmPolicy || "pairing",
         allowAgents: agent.subagents?.allowAgents || [],
-        telegramConfigured: !!telegramAccount?.botToken,
+        telegramConfigured: Boolean(telegramAccount?.botToken || config.channels?.telegram?.botToken),
       },
       memory: {
         recentFiles,

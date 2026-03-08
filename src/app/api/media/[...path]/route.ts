@@ -1,11 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { readFile, stat } from "fs/promises";
 import path from "path";
-
-const ALLOWED_PREFIXES = [
-  (process.env.OPENCLAW_WORKSPACE || "/home/node/.openclaw/workspace") + "/",
-  (process.env.OPENCLAW_DIR || "/home/node/.openclaw") + "/media/",
-];
+import { ALLOWED_MEDIA_PREFIXES } from "@/lib/paths";
 
 const ALLOWED_EXTENSIONS: Record<string, string> = {
   ".png": "image/png",
@@ -20,15 +16,13 @@ export async function GET(
   { params }: { params: Promise<{ path: string[] }> }
 ) {
   const { path: segments } = await params;
-  const filePath = "/" + segments.join("/");
+  const filePath = `/${segments.join("/")}`;
   const resolved = path.resolve(filePath);
 
-  // Security: only allowed prefixes
-  if (!ALLOWED_PREFIXES.some((p) => resolved.startsWith(p))) {
+  if (!ALLOWED_MEDIA_PREFIXES.some((prefix) => resolved.startsWith(prefix))) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  // Security: only image extensions
   const ext = path.extname(resolved).toLowerCase();
   const contentType = ALLOWED_EXTENSIONS[ext];
   if (!contentType) {

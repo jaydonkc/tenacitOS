@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
-import { existsSync, readFileSync } from "fs";
-import { execSync } from "child_process";
+import { existsSync } from "fs";
+import { detectComposeFile, OPENCLAW_CONFIG, OPENCLAW_DIR, OPENCLAW_WORKSPACE, readOpenClawConfig } from "@/lib/openclaw-runtime";
 import { getGatewayConfig, gatewayGet } from "@/lib/openclaw-gateway";
 
 const required: string[] = [];
-const recommended = ["OPENCLAW_DIR", "OPENCLAW_WORKSPACE", "OPENCLAW_GATEWAY_TOKEN", "OLLAMA_BASE_URL", "AGENT_COMMS_HEALTH_URL"];
+const recommended = ["OPENCLAW_DIR", "OPENCLAW_WORKSPACE", "OPENCLAW_COMPOSE_FILE", "OLLAMA_BASE_URL", "AGENT_COMMS_HEALTH_URL"];
 
 function envSnapshot() {
   const all = [...required, ...recommended];
@@ -12,17 +12,23 @@ function envSnapshot() {
 }
 
 function checkOpenclawFiles() {
-  const openclawDir = process.env.OPENCLAW_DIR || "/home/node/.openclaw";
-  const configPath = `${openclawDir}/openclaw.json`;
-  const hasConfig = existsSync(configPath);
+  const hasConfig = existsSync(OPENCLAW_CONFIG);
   let agents = 0;
   if (hasConfig) {
     try {
-      const parsed = JSON.parse(readFileSync(configPath, "utf-8"));
-      agents = parsed?.agents?.list?.length || 0;
-    } catch {}
+      agents = readOpenClawConfig().agents?.list?.length || 0;
+    } catch {
+      agents = 0;
+    }
   }
-  return { openclawDir, hasConfig, agents };
+
+  return {
+    openclawDir: OPENCLAW_DIR,
+    workspace: OPENCLAW_WORKSPACE,
+    hasConfig,
+    agents,
+    composeFile: detectComposeFile(),
+  };
 }
 
 export async function GET() {
@@ -32,14 +38,11 @@ export async function GET() {
 
   let gatewayOk = false;
   try {
-    const health = await gatewayGet(['/health', '/api/health']);
+    const health = await gatewayGet(["/health", "/healthz", "/api/health"]);
     gatewayOk = Boolean(health);
-  } catch {}
-
-  let gatewayService = "unknown";
-  try {
-    gatewayService = execSync("openclaw gateway status 2>/dev/null || echo unknown", { encoding: "utf-8" }).trim();
-  } catch {}
+  } catch {
+    gatewayOk = false;
+  }
 
   return NextResponse.json({
     timestamp: new Date().toISOString(),
@@ -50,9 +53,9 @@ export async function GET() {
         gatewayUrl: gateway.url,
         gatewayAuth: Boolean(gateway.token),
         gatewayOk,
-        gatewayService,
+        gatewayService: gatewayOk ? "healthy" : "unreachable",
       },
     },
-    ready: env.filter((e) => e.required && !e.configured).length === 0 && files.hasConfig,
+    ready: env.filter((entry) => entry.required && !entry.configured).length === 0 && files.hasConfig,
   });
 }

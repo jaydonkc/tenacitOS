@@ -5,13 +5,20 @@ import type { AgentConfig, AgentState } from './agentsConfig';
 
 interface AgentPanelProps {
   agent: AgentConfig;
-  state: AgentState;
+  state?: AgentState;
   onClose: () => void;
 }
 
 export default function AgentPanel({ agent, state, onClose }: AgentPanelProps) {
+  const status = state?.status ?? 'idle';
+  const currentTask = state?.currentTask;
+  const model = state?.model;
+  const tokensPerHour = state?.tokensPerHour ?? 0;
+  const tasksInQueue = state?.tasksInQueue ?? 0;
+  const uptime = state?.uptime ?? 0;
+
   const getStatusColor = () => {
-    switch (state.status) {
+    switch (status) {
       case 'working': return 'text-green-500';
       case 'thinking': return 'text-blue-500 animate-pulse';
       case 'error': return 'text-red-500';
@@ -21,7 +28,7 @@ export default function AgentPanel({ agent, state, onClose }: AgentPanelProps) {
   };
 
   const getStatusBgColor = () => {
-    switch (state.status) {
+    switch (status) {
       case 'working': return 'bg-green-500/20';
       case 'thinking': return 'bg-blue-500/20';
       case 'error': return 'bg-red-500/20';
@@ -51,17 +58,17 @@ export default function AgentPanel({ agent, state, onClose }: AgentPanelProps) {
 
       {/* Status badge */}
       <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full mb-6 ${getStatusBgColor()}`}>
-        <div className={`w-2 h-2 rounded-full ${state.status === 'thinking' ? 'animate-pulse' : ''}`} style={{ backgroundColor: agent.color }}></div>
+        <div className={`w-2 h-2 rounded-full ${status === 'thinking' ? 'animate-pulse' : ''}`} style={{ backgroundColor: agent.color }}></div>
         <span className={`text-sm font-medium ${getStatusColor()}`}>
-          {state.status.toUpperCase()}
+          {status.toUpperCase()}
         </span>
       </div>
 
       {/* Current task */}
-      {state.currentTask && (
+      {currentTask && (
         <div className="mb-6">
           <h3 className="text-sm font-semibold text-gray-400 mb-2">Current Task</h3>
-          <p className="text-base">{state.currentTask}</p>
+          <p className="text-base">{currentTask}</p>
         </div>
       )}
 
@@ -73,25 +80,25 @@ export default function AgentPanel({ agent, state, onClose }: AgentPanelProps) {
           {/* Model */}
           <div className="bg-white/5 p-3 rounded-lg">
             <p className="text-xs text-gray-400 mb-1">Model</p>
-            <p className="text-lg font-bold capitalize">{state.model || 'N/A'}</p>
+            <p className="text-lg font-bold capitalize">{model || 'N/A'}</p>
           </div>
 
           {/* Tokens/hour */}
           <div className="bg-white/5 p-3 rounded-lg">
             <p className="text-xs text-gray-400 mb-1">Tokens/hour</p>
-            <p className="text-lg font-bold">{state.tokensPerHour?.toLocaleString() || '0'}</p>
+            <p className="text-lg font-bold">{tokensPerHour.toLocaleString()}</p>
           </div>
 
           {/* Tasks in queue */}
           <div className="bg-white/5 p-3 rounded-lg">
             <p className="text-xs text-gray-400 mb-1">Queue</p>
-            <p className="text-lg font-bold">{state.tasksInQueue || 0} tasks</p>
+            <p className="text-lg font-bold">{tasksInQueue} tasks</p>
           </div>
 
           {/* Uptime */}
           <div className="bg-white/5 p-3 rounded-lg">
             <p className="text-xs text-gray-400 mb-1">Uptime</p>
-            <p className="text-lg font-bold">{state.uptime || 0} days</p>
+            <p className="text-lg font-bold">{uptime} days</p>
           </div>
         </div>
       </div>
@@ -106,11 +113,11 @@ export default function AgentPanel({ agent, state, onClose }: AgentPanelProps) {
           </div>
           <div className="bg-white/5 p-3 rounded-lg text-sm">
             <p className="text-gray-400 text-xs mb-1">15 minutes ago</p>
-            <p>Started: {state.currentTask || 'Processing data'}</p>
+            <p>Started: {currentTask || 'Processing data'}</p>
           </div>
           <div className="bg-white/5 p-3 rounded-lg text-sm">
             <p className="text-gray-400 text-xs mb-1">1 hour ago</p>
-            <p>Switched model to {state.model}</p>
+            <p>Switched model to {model || 'N/A'}</p>
           </div>
         </div>
       </div>

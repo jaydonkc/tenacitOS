@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { DollarSign, TrendingUp, TrendingDown, AlertTriangle, Calendar, PieChart } from "lucide-react";
 import { LineChart, Line, BarChart, Bar, PieChart as RePieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
+import { MODEL_PRICING } from "@/lib/pricing";
 
 interface CostData {
   today: number;
@@ -15,15 +16,12 @@ interface CostData {
   byModel: Array<{ model: string; cost: number; tokens: number }>;
   daily: Array<{ date: string; cost: number; input: number; output: number }>;
   hourly: Array<{ hour: string; cost: number }>;
+  updatedAt?: number;
+  source?: string;
+  message?: string;
 }
 
 const COLORS = ['#FF3B30', '#FF9500', '#FFCC00', '#34C759', '#00C7BE', '#30B0C7', '#32ADE6', '#007AFF', '#5856D6', '#AF52DE', '#FF2D55'];
-
-const MODEL_PRICES = {
-  "opus-4.6": { input: 15, output: 75, cacheRead: 1.5, cacheWrite: 18.75 },
-  "sonnet-4.5": { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 },
-  "haiku-3.5": { input: 0.8, output: 4, cacheRead: 0.08, cacheWrite: 1.0 },
-};
 
 export default function CostsPage() {
   const [costData, setCostData] = useState<CostData | null>(null);
@@ -32,13 +30,15 @@ export default function CostsPage() {
 
   useEffect(() => {
     fetchCostData();
-    const interval = setInterval(fetchCostData, 60000); // Update every minute
+    const interval = setInterval(fetchCostData, 30000); // Update every 30s
     return () => clearInterval(interval);
   }, [timeframe]);
 
   const fetchCostData = async () => {
     try {
-      const res = await fetch(`/api/costs?timeframe=${timeframe}`);
+      const res = await fetch(`/api/costs?timeframe=${timeframe}`, {
+        cache: "no-store",
+      });
       if (res.ok) {
         const data = await res.json();
         setCostData(data);
@@ -74,8 +74,15 @@ export default function CostsPage() {
 
   const budgetPercent = (costData.thisMonth / costData.budget) * 100;
   const budgetColor = budgetPercent < 60 ? "var(--success)" : budgetPercent < 85 ? "var(--warning)" : "var(--error)";
-  const todayChange = ((costData.today - costData.yesterday) / costData.yesterday) * 100;
-  const monthChange = ((costData.thisMonth - costData.lastMonth) / costData.lastMonth) * 100;
+  const todayChange =
+    costData.yesterday > 0
+      ? ((costData.today - costData.yesterday) / costData.yesterday) * 100
+      : null;
+  const monthChange =
+    costData.lastMonth > 0
+      ? ((costData.thisMonth - costData.lastMonth) / costData.lastMonth) * 100
+      : null;
+  const agentTotal = costData.byAgent.reduce((sum, agent) => sum + agent.cost, 0);
 
   return (
     <div className="space-y-6">
@@ -92,8 +99,13 @@ export default function CostsPage() {
             Costs & Analytics
           </h1>
           <p style={{ color: "var(--text-secondary)" }}>
-            Token usage and cost tracking across all agents
+            Live usage and cost tracking from OpenClaw session logs
           </p>
+          {costData.updatedAt && (
+            <p className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>
+              Updated {new Date(costData.updatedAt).toLocaleTimeString()}
+            </p>
+          )}
         </div>
 
         {/* Timeframe selector */}
@@ -120,7 +132,7 @@ export default function CostsPage() {
         <div className="p-6 rounded-xl" style={{ backgroundColor: "var(--card)", border: "1px solid var(--border)" }}>
           <div className="flex items-center justify-between mb-2">
             <span className="text-sm" style={{ color: "var(--text-secondary)" }}>Today</span>
-            {todayChange !== 0 && (
+            {todayChange !== null && todayChange !== 0 && (
               <div className="flex items-center gap-1">
                 {todayChange > 0 ? (
                   <TrendingUp className="w-3 h-3" style={{ color: "var(--error)" }} />
@@ -148,7 +160,7 @@ export default function CostsPage() {
         <div className="p-6 rounded-xl" style={{ backgroundColor: "var(--card)", border: "1px solid var(--border)" }}>
           <div className="flex items-center justify-between mb-2">
             <span className="text-sm" style={{ color: "var(--text-secondary)" }}>This Month</span>
-            {monthChange !== 0 && (
+            {monthChange !== null && monthChange !== 0 && (
               <div className="flex items-center gap-1">
                 {monthChange > 0 ? (
                   <TrendingUp className="w-3 h-3" style={{ color: "var(--error)" }} />
@@ -328,15 +340,15 @@ export default function CostsPage() {
               </tr>
             </thead>
             <tbody>
-              {Object.entries(MODEL_PRICES).map(([model, prices]) => (
-                <tr key={model} style={{ borderBottom: "1px solid var(--border)" }}>
+              {MODEL_PRICING.map((pricing) => (
+                <tr key={pricing.id} style={{ borderBottom: "1px solid var(--border)" }}>
                   <td className="py-3 px-4">
-                    <span className="font-medium" style={{ color: "var(--text-primary)" }}>{model}</span>
+                    <span className="font-medium" style={{ color: "var(--text-primary)" }}>{pricing.name}</span>
                   </td>
-                  <td className="py-3 px-4 text-right" style={{ color: "var(--text-primary)" }}>${prices.input}</td>
-                  <td className="py-3 px-4 text-right" style={{ color: "var(--text-primary)" }}>${prices.output}</td>
-                  <td className="py-3 px-4 text-right" style={{ color: "var(--text-secondary)" }}>${prices.cacheRead}</td>
-                  <td className="py-3 px-4 text-right" style={{ color: "var(--text-secondary)" }}>${prices.cacheWrite}</td>
+                  <td className="py-3 px-4 text-right" style={{ color: "var(--text-primary)" }}>${pricing.inputPricePerMillion}</td>
+                  <td className="py-3 px-4 text-right" style={{ color: "var(--text-primary)" }}>${pricing.outputPricePerMillion}</td>
+                  <td className="py-3 px-4 text-right" style={{ color: "var(--text-secondary)" }}>${pricing.cacheReadPricePerMillion || 0}</td>
+                  <td className="py-3 px-4 text-right" style={{ color: "var(--text-secondary)" }}>${pricing.cacheWritePricePerMillion || 0}</td>
                 </tr>
               ))}
             </tbody>
@@ -361,7 +373,7 @@ export default function CostsPage() {
             </thead>
             <tbody>
               {costData.byAgent.map((agent) => {
-                const percent = (agent.cost / costData.thisMonth) * 100;
+                const percent = agentTotal > 0 ? (agent.cost / agentTotal) * 100 : 0;
                 return (
                   <tr key={agent.agent} style={{ borderBottom: "1px solid var(--border)" }}>
                     <td className="py-3 px-4">

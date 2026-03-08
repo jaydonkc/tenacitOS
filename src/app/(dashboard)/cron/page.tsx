@@ -101,7 +101,7 @@ export default function CronJobsPage() {
             Cron Jobs
           </h1>
           <p className="text-sm md:text-base" style={{ color: 'var(--text-secondary)' }}>
-            Scheduled tasks from OpenClaw Gateway
+            Scheduled tasks from your OpenClaw stack
           </p>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>

@@ -1,10 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { promises as fs } from "fs";
 import path from "path";
+import { resolveWorkspaceId } from "@/lib/openclaw-runtime";
 
-const OPENCLAW_DIR = process.env.OPENCLAW_DIR || "/home/node/.openclaw";
-
-// Files to show in the memory browser
 const ROOT_FILES = ["MEMORY.md", "SOUL.md", "USER.md", "AGENTS.md", "TOOLS.md", "IDENTITY.md"];
 const MEMORY_DIR = "memory";
 
@@ -27,7 +25,6 @@ async function fileExists(filePath: string): Promise<boolean> {
 async function getFileTree(workspacePath: string): Promise<FileNode[]> {
   const tree: FileNode[] = [];
 
-  // Add root markdown files
   for (const file of ROOT_FILES) {
     const fullPath = path.join(workspacePath, file);
     if (await fileExists(fullPath)) {
@@ -39,23 +36,20 @@ async function getFileTree(workspacePath: string): Promise<FileNode[]> {
     }
   }
 
-  // Add memory folder if it exists
   const memoryPath = path.join(workspacePath, MEMORY_DIR);
   if (await fileExists(memoryPath)) {
     const memoryStats = await fs.stat(memoryPath);
     if (memoryStats.isDirectory()) {
       const memoryFiles = await fs.readdir(memoryPath);
-      const children: FileNode[] = [];
-
-      for (const file of memoryFiles.sort().reverse()) {
-        if (file.endsWith(".md")) {
-          children.push({
-            name: file,
-            path: `${MEMORY_DIR}/${file}`,
-            type: "file",
-          });
-        }
-      }
+      const children = memoryFiles
+        .filter((file) => file.endsWith(".md"))
+        .sort()
+        .reverse()
+        .map((file) => ({
+          name: file,
+          path: `${MEMORY_DIR}/${file}`,
+          type: "file" as const,
+        }));
 
       if (children.length > 0) {
         tree.push({
@@ -72,26 +66,17 @@ async function getFileTree(workspacePath: string): Promise<FileNode[]> {
 }
 
 function sanitizePath(requestedPath: string): string | null {
-  // Prevent directory traversal
   const normalized = path.normalize(requestedPath);
   if (normalized.startsWith("..") || path.isAbsolute(normalized)) {
     return null;
   }
-
-  // Only allow .md files
   if (!normalized.endsWith(".md")) {
     return null;
   }
 
-  // Only allow root files or files in memory/
   const isRootFile = ROOT_FILES.includes(normalized);
   const isMemoryFile = normalized.startsWith(`${MEMORY_DIR}/`);
-
-  if (!isRootFile && !isMemoryFile) {
-    return null;
-  }
-
-  return normalized;
+  return isRootFile || isMemoryFile ? normalized : null;
 }
 
 export async function GET(request: NextRequest) {
@@ -100,48 +85,31 @@ export async function GET(request: NextRequest) {
   const filePath = searchParams.get("path");
 
   try {
-    // Determine workspace path
-    const workspacePath = path.join(OPENCLAW_DIR, workspace);
-    
-    // Validate workspace exists
-    if (!(await fileExists(workspacePath))) {
-      return NextResponse.json(
-        { error: "Workspace not found" },
-        { status: 404 }
-      );
+    const workspacePath = resolveWorkspaceId(workspace);
+    if (!workspacePath || !(await fileExists(workspacePath))) {
+      return NextResponse.json({ error: "Workspace not found" }, { status: 404 });
     }
 
     if (!filePath) {
-      // Return file tree
       const tree = await getFileTree(workspacePath);
       return NextResponse.json(tree);
     }
 
-    // Read specific file
     const safePath = sanitizePath(filePath);
     if (!safePath) {
-      return NextResponse.json(
-        { error: "Invalid file path" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Invalid file path" }, { status: 400 });
     }
 
     const fullPath = path.join(workspacePath, safePath);
     if (!(await fileExists(fullPath))) {
-      return NextResponse.json(
-        { error: "File not found" },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: "File not found" }, { status: 404 });
     }
 
     const content = await fs.readFile(fullPath, "utf-8");
     return NextResponse.json({ path: safePath, content });
   } catch (error) {
     console.error("Error reading file:", error);
-    return NextResponse.json(
-      { error: "Failed to read file" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Failed to read file" }, { status: 500 });
   }
 }
 
@@ -151,44 +119,26 @@ export async function PUT(request: NextRequest) {
     const { workspace = "workspace", path: filePath, content } = body;
 
     if (!filePath || typeof content !== "string") {
-      return NextResponse.json(
-        { error: "Missing path or content" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Missing path or content" }, { status: 400 });
     }
 
     const safePath = sanitizePath(filePath);
     if (!safePath) {
-      return NextResponse.json(
-        { error: "Invalid file path" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Invalid file path" }, { status: 400 });
     }
 
-    const workspacePath = path.join(OPENCLAW_DIR, workspace);
-    
-    // Validate workspace exists
-    if (!(await fileExists(workspacePath))) {
-      return NextResponse.json(
-        { error: "Workspace not found" },
-        { status: 404 }
-      );
+    const workspacePath = resolveWorkspaceId(workspace);
+    if (!workspacePath || !(await fileExists(workspacePath))) {
+      return NextResponse.json({ error: "Workspace not found" }, { status: 404 });
     }
 
     const fullPath = path.join(workspacePath, safePath);
-
-    // Create memory directory if needed
-    const dir = path.dirname(fullPath);
-    await fs.mkdir(dir, { recursive: true });
-
+    await fs.mkdir(path.dirname(fullPath), { recursive: true });
     await fs.writeFile(fullPath, content, "utf-8");
 
     return NextResponse.json({ success: true, path: safePath });
   } catch (error) {
     console.error("Error saving file:", error);
-    return NextResponse.json(
-      { error: "Failed to save file" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Failed to save file" }, { status: 500 });
   }
 }

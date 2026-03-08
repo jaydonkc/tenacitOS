@@ -103,7 +103,7 @@ export default function SkillsPage() {
             color: "var(--text-secondary)",
           }}
         >
-          Runtime-discovered skills from gateway and filesystem
+          Runtime-discovered skills from the OpenClaw CLI
         </p>
       </div>
 

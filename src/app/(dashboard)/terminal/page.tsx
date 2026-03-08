@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Terminal, Send, Trash2, Copy, ChevronRight } from "lucide-react";
+import { Terminal, Send, Trash2, Copy } from "lucide-react";
 
 interface HistoryEntry {
   command: string;
@@ -16,11 +16,11 @@ const QUICK_COMMANDS = [
   "free -h",
   "uptime",
   "ps aux | grep node",
-  "systemctl status mission-control",
-  "pm2 list",
-  "ls /home/node/.openclaw/workspace",
-  "git -C /home/node/.openclaw/workspace/mission-control status",
-  "journalctl -u mission-control -n 20 --no-pager",
+  "docker compose -f ~/openclaw/docker-compose.yml ps --all",
+  "ls ~/.openclaw/workspace",
+  "ls ~/.openclaw/workspace-coding",
+  "openclaw sessions --json --all-agents",
+  "git -C ~/newdash/tenacitOS status",
   "docker ps",
   "netstat -tlnp",
   "cat /proc/loadavg",

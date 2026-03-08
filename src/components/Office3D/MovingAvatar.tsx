@@ -13,7 +13,7 @@ interface Obstacle {
 
 interface MovingAvatarProps {
   agent: AgentConfig;
-  state: AgentState;
+  state?: AgentState;
   officeBounds: {
     minX: number;
     maxX: number;
@@ -33,6 +33,7 @@ export default function MovingAvatar({
   otherAvatarPositions,
   onPositionUpdate 
 }: MovingAvatarProps) {
+  const status = state?.status ?? 'idle';
   const groupRef = useRef<Group>(null);
   
   // Fully random initial position with no collisions
@@ -121,7 +122,7 @@ export default function MovingAvatar({
     // Thinking: moverse muy poco
     // Error: quedarse quieto
     const getInterval = () => {
-      switch (state.status) {
+      switch (status) {
         case 'idle':
           return 3000 + Math.random() * 3000; // 3-6s
         case 'working':
@@ -143,13 +144,13 @@ export default function MovingAvatar({
       clearTimeout(timeout);
       clearInterval(interval);
     };
-  }, [state.status]);
+  }, [status]);
 
   // Move smoothly toward the current target
   useFrame((frameState, delta) => {
     if (!groupRef.current) return;
 
-    const speed = state.status === 'idle' ? 1.5 : 0.8; // Idle moves faster
+    const speed = status === 'idle' ? 1.5 : 0.8; // Idle moves faster
     const moveSpeed = delta * speed;
 
     // Calculate the next position
@@ -185,9 +186,9 @@ export default function MovingAvatar({
       <VoxelAvatar
         agent={agent}
         position={[0, 0, 0]}
-        isWorking={state.status === 'working'}
-        isThinking={state.status === 'thinking'}
-        isError={state.status === 'error'}
+        isWorking={status === 'working'}
+        isThinking={status === 'thinking'}
+        isError={status === 'error'}
       />
     </group>
   );

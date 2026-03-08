@@ -35,7 +35,7 @@ const ACTIONS: QuickAction[] = [
   {
     id: "gateway-status",
     label: "Gateway Status",
-    description: "Inspect openclaw gateway service state",
+    description: "Inspect the OpenClaw gateway and container status",
     icon: Terminal,
     color: "#a78bfa",
   },
@@ -71,7 +71,7 @@ const ACTIONS: QuickAction[] = [
   {
     id: "clear-temp",
     label: "Clear Temp Files",
-    description: "Remove temporary files and trim large PM2 logs",
+    description: "Remove temporary files from the OpenClaw workspace",
     icon: Trash2,
     color: "var(--error)",
     dangerous: true,
@@ -79,7 +79,7 @@ const ACTIONS: QuickAction[] = [
   {
     id: "npm-audit",
     label: "NPM Security Audit",
-    description: "Check for vulnerabilities in mission-control dependencies",
+    description: "Check for vulnerabilities in dashboard dependencies",
     icon: Shield,
     color: "#4ADE80",
   },

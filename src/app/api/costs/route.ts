@@ -1,61 +1,25 @@
 import { NextResponse } from "next/server";
 import { NextRequest } from "next/server";
-import {
-  getDatabase,
-  getCostSummary,
-  getCostByAgent,
-  getCostByModel,
-  getDailyCost,
-  getHourlyCost,
-} from "@/lib/usage-queries";
-import path from "path";
+import { loadCostDashboardData } from "@/lib/cost-dashboard";
 
-const DB_PATH = path.join(process.cwd(), "data", "usage-tracking.db");
 const DEFAULT_BUDGET = 100.0; // Default budget in USD
+
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
   const timeframe = searchParams.get("timeframe") || "30d";
 
   // Parse timeframe to days
-  const days = parseInt(timeframe.replace(/\D/g, ""), 10) || 30;
+  const days = Math.max(1, Math.min(365, parseInt(timeframe.replace(/\D/g, ""), 10) || 30));
 
   try {
-    const db = getDatabase(DB_PATH);
-
-    if (!db) {
-      // Database doesn't exist yet - return zeros
-      return NextResponse.json({
-        today: 0,
-        yesterday: 0,
-        thisMonth: 0,
-        lastMonth: 0,
-        projected: 0,
-        budget: DEFAULT_BUDGET,
-        byAgent: [],
-        byModel: [],
-        daily: [],
-        hourly: [],
-        message: "No usage data collected yet. Run collect-usage script first.",
-      });
-    }
-
-    // Get all the data
-    const summary = getCostSummary(db);
-    const byAgent = getCostByAgent(db, days);
-    const byModel = getCostByModel(db, days);
-    const daily = getDailyCost(db, days);
-    const hourly = getHourlyCost(db);
-
-    db.close();
-
-    return NextResponse.json({
-      ...summary,
-      budget: DEFAULT_BUDGET,
-      byAgent,
-      byModel,
-      daily,
-      hourly,
+    const data = await loadCostDashboardData(days, DEFAULT_BUDGET);
+    return NextResponse.json(data, {
+      headers: {
+        "Cache-Control": "no-store",
+      },
     });
   } catch (error) {
     console.error("Error fetching cost data:", error);

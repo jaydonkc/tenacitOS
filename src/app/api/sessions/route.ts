@@ -1,19 +1,17 @@
 /**
  * Sessions API
- * GET /api/sessions          → list all sessions (from openclaw sessions list --json)
- * GET /api/sessions?id=xxx   → get messages from a specific session (reads JSONL)
+ * GET /api/sessions          -> list all sessions
+ * GET /api/sessions?id=xxx   -> get messages from a specific session JSONL transcript
  */
-import { NextRequest, NextResponse } from 'next/server';
-import { execSync } from 'child_process';
-import { readFileSync, existsSync } from 'fs';
-import { join } from 'path';
-import { gatewayGet, gatewayRpc } from '@/lib/openclaw-gateway';
-
-const OPENCLAW_DIR = process.env.OPENCLAW_DIR || '/home/node/.openclaw';
+import { NextRequest, NextResponse } from "next/server";
+import { readFileSync } from "fs";
+import { findSessionTranscriptPath } from "@/lib/openclaw-runtime";
+import { tryRunOpenClawJson } from "@/lib/openclaw-cli";
 
 interface RawSession {
   key: string;
-  kind: string;
+  kind?: string;
+  agentId?: string;
   updatedAt: number;
   ageMs: number;
   sessionId?: string;
@@ -31,7 +29,8 @@ interface RawSession {
 interface ParsedSession {
   id: string;
   key: string;
-  type: 'main' | 'cron' | 'subagent' | 'direct' | 'unknown';
+  agentId: string;
+  type: "main" | "cron" | "subagent" | "direct" | "unknown";
   typeLabel: string;
   typeEmoji: string;
   sessionId: string | null;
@@ -49,139 +48,116 @@ interface ParsedSession {
   aborted: boolean;
 }
 
-function parseSessionKey(key: string): {
-  type: 'main' | 'cron' | 'subagent' | 'direct' | 'unknown';
+function parseSessionKey(raw: RawSession): {
+  agentId: string;
+  type: "main" | "cron" | "subagent" | "direct" | "unknown";
   typeLabel: string;
   typeEmoji: string;
   cronJobId?: string;
   subagentId?: string;
   isRunEntry: boolean;
 } {
-  // Examples:
-  // agent:main:main
-  // agent:main:cron:<jobId>
-  // agent:main:cron:<jobId>:run:<sessionId>
-  // agent:main:subagent:<subagentId>
-  // agent:main:telegram:<chatId> or agent:main:direct:<...>
+  const parts = raw.key.split(":");
+  const agentId = raw.agentId || parts[1] || "main";
 
-  const parts = key.split(':');
-
-  // Skip the ":run:" duplicate entries - these are redundant
-  if (parts.includes('run')) {
-    return { type: 'unknown', typeLabel: 'Run Entry', typeEmoji: '🔁', isRunEntry: true };
+  if (parts.includes("run")) {
+    return { agentId, type: "unknown", typeLabel: "Run Entry", typeEmoji: "🔁", isRunEntry: true };
   }
 
-  if (parts[2] === 'main') {
-    return { type: 'main', typeLabel: 'Main Session', typeEmoji: '🦞', isRunEntry: false };
+  if (parts[2] === "main") {
+    return { agentId, type: "main", typeLabel: `${agentId} Main`, typeEmoji: "🧠", isRunEntry: false };
   }
 
-  if (parts[2] === 'cron') {
+  if (parts[2] === "cron") {
     return {
-      type: 'cron',
-      typeLabel: 'Cron Job',
-      typeEmoji: '🕐',
+      agentId,
+      type: "cron",
+      typeLabel: "Cron Job",
+      typeEmoji: "🕐",
       cronJobId: parts[3],
       isRunEntry: false,
     };
   }
 
-  if (parts[2] === 'subagent') {
+  if (parts[2] === "subagent") {
     return {
-      type: 'subagent',
-      typeLabel: 'Sub-agent',
-      typeEmoji: '🤖',
+      agentId,
+      type: "subagent",
+      typeLabel: `${agentId} Sub-agent`,
+      typeEmoji: "🤖",
       subagentId: parts[3],
       isRunEntry: false,
     };
   }
 
-  // telegram, direct, etc.
   return {
-    type: 'direct',
-    typeLabel: parts[2] ? `${parts[2].charAt(0).toUpperCase() + parts[2].slice(1)} Chat` : 'Direct Chat',
-    typeEmoji: '💬',
+    agentId,
+    type: "direct",
+    typeLabel: parts[2] ? `${parts[2].charAt(0).toUpperCase() + parts[2].slice(1)} Chat` : "Direct Chat",
+    typeEmoji: "💬",
     isRunEntry: false,
   };
 }
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
-  const sessionId = searchParams.get('id');
+  const sessionId = searchParams.get("id");
 
-  // Return messages for a specific session
   if (sessionId) {
     return getSessionMessages(sessionId);
   }
 
-  // Return list of all sessions
   return listSessions();
 }
 
 async function listSessions(): Promise<NextResponse> {
   try {
-    let rawSessions: RawSession[] = [];
+    const data = tryRunOpenClawJson<{ sessions?: RawSession[] }>(["sessions", "--json", "--all-agents"]);
+    const rawSessions = data?.sessions || [];
 
-    const rpc = await gatewayRpc<{ sessions?: RawSession[] }>('sessions.list', {});
-    if (rpc?.sessions && Array.isArray(rpc.sessions)) {
-      rawSessions = rpc.sessions;
-    } else {
-      const rest = await gatewayGet<{ sessions?: RawSession[] }>(['/api/sessions', '/sessions']);
-      if (rest?.sessions && Array.isArray(rest.sessions)) {
-        rawSessions = rest.sessions;
-      } else {
-        const output = execSync('openclaw sessions list --json 2>/dev/null', {
-          timeout: 10000,
-          encoding: 'utf-8',
-        });
-        const data = JSON.parse(output);
-        rawSessions = data.sessions || [];
-      }
-    }
-
-    const sessions: ParsedSession[] = rawSessions
-      .reduce<ParsedSession[]>((acc, raw) => {
-        const parsed = parseSessionKey(raw.key);
-
-        // Skip run-entry duplicates and unknown types
-        if (parsed.isRunEntry || parsed.type === 'unknown') return acc;
-
-        const totalTokens = raw.totalTokens || 0;
-        const contextTokens = raw.contextTokens || 0;
-        const contextUsedPercent =
-          contextTokens > 0 && raw.totalTokensFresh
-            ? Math.round((totalTokens / contextTokens) * 100)
-            : null;
-
-        acc.push({
-          id: raw.key,
-          key: raw.key,
-          type: parsed.type,
-          typeLabel: parsed.typeLabel,
-          typeEmoji: parsed.typeEmoji,
-          sessionId: raw.sessionId || null,
-          cronJobId: parsed.cronJobId,
-          subagentId: parsed.subagentId,
-          updatedAt: raw.updatedAt,
-          ageMs: raw.ageMs,
-          model: raw.model || 'unknown',
-          modelProvider: raw.modelProvider || 'anthropic',
-          inputTokens: raw.inputTokens || 0,
-          outputTokens: raw.outputTokens || 0,
-          totalTokens,
-          contextTokens,
-          contextUsedPercent,
-          aborted: raw.abortedLastRun || false,
-        });
+    const sessions: ParsedSession[] = rawSessions.reduce<ParsedSession[]>((acc, raw) => {
+      const parsed = parseSessionKey(raw);
+      if (parsed.isRunEntry || parsed.type === "unknown") {
         return acc;
-      }, []);
+      }
 
-    // Sort by updatedAt desc
+      const totalTokens = raw.totalTokens || 0;
+      const contextTokens = raw.contextTokens || 0;
+      const contextUsedPercent =
+        contextTokens > 0 && raw.totalTokensFresh
+          ? Math.round((totalTokens / contextTokens) * 100)
+          : null;
+
+      acc.push({
+        id: raw.key,
+        key: raw.key,
+        agentId: parsed.agentId,
+        type: parsed.type,
+        typeLabel: parsed.typeLabel,
+        typeEmoji: parsed.typeEmoji,
+        sessionId: raw.sessionId || null,
+        cronJobId: parsed.cronJobId,
+        subagentId: parsed.subagentId,
+        updatedAt: raw.updatedAt,
+        ageMs: raw.ageMs,
+        model: raw.model || "unknown",
+        modelProvider: raw.modelProvider || "unknown",
+        inputTokens: raw.inputTokens || 0,
+        outputTokens: raw.outputTokens || 0,
+        totalTokens,
+        contextTokens,
+        contextUsedPercent,
+        aborted: raw.abortedLastRun || false,
+      });
+      return acc;
+    }, []);
+
     sessions.sort((a, b) => b.updatedAt - a.updatedAt);
 
     return NextResponse.json({ sessions, total: sessions.length });
   } catch (error) {
-    console.error('[sessions] Error listing sessions:', error);
-    return NextResponse.json({ error: 'Failed to list sessions', sessions: [] }, { status: 500 });
+    console.error("[sessions] Error listing sessions:", error);
+    return NextResponse.json({ error: "Failed to list sessions", sessions: [] }, { status: 500 });
   }
 }
 
@@ -189,37 +165,41 @@ interface JsonlLine {
   type: string;
   id?: string;
   timestamp?: string;
+  modelId?: string;
   message?: {
     role: string;
-    content: string | Array<{ type: string; text?: string; name?: string; input?: unknown; id?: string }>;
-    timestamp?: number;
+    content:
+      | string
+      | Array<{
+          type: string;
+          text?: string;
+          name?: string;
+          arguments?: unknown;
+          input?: unknown;
+          toolName?: string;
+          toolCallId?: string;
+          id?: string;
+        }>;
   };
-  provider?: string;
-  modelId?: string;
-  customType?: string;
-  data?: unknown;
 }
 
 async function getSessionMessages(sessionId: string): Promise<NextResponse> {
-  // Security: only allow UUID-like session IDs
-  if (!/^[a-f0-9-]{36}$/.test(sessionId)) {
-    return NextResponse.json({ error: 'Invalid session ID' }, { status: 400 });
+  if (!/^[A-Za-z0-9._-]+$/.test(sessionId)) {
+    return NextResponse.json({ error: "Invalid session ID" }, { status: 400 });
   }
 
-  const sessionsDir = join(OPENCLAW_DIR, 'agents', 'main', 'sessions');
-  const filePath = join(sessionsDir, `${sessionId}.jsonl`);
-
-  if (!existsSync(filePath)) {
-    return NextResponse.json({ error: 'Session not found', messages: [] }, { status: 404 });
+  const filePath = findSessionTranscriptPath(sessionId);
+  if (!filePath) {
+    return NextResponse.json({ error: "Session not found", messages: [] }, { status: 404 });
   }
 
   try {
-    const raw = readFileSync(filePath, 'utf-8');
-    const lines = raw.trim().split('\n').filter(Boolean);
+    const raw = readFileSync(filePath, "utf-8");
+    const lines = raw.trim().split("\n").filter(Boolean);
 
     interface ParsedMessage {
       id: string;
-      type: 'user' | 'assistant' | 'tool_use' | 'tool_result' | 'model_change' | 'system';
+      type: "user" | "assistant" | "tool_use" | "tool_result" | "model_change" | "system";
       role?: string;
       content: string;
       timestamp: string;
@@ -228,69 +208,77 @@ async function getSessionMessages(sessionId: string): Promise<NextResponse> {
     }
 
     const messages: ParsedMessage[] = [];
-    let currentModel = '';
+    let currentModel = "";
 
     for (const line of lines) {
       try {
-        const obj: JsonlLine = JSON.parse(line);
+        const obj = JSON.parse(line) as JsonlLine;
 
-        if (obj.type === 'model_change' && obj.modelId) {
+        if (obj.type === "model_change" && obj.modelId) {
           currentModel = obj.modelId;
+          continue;
         }
 
-        if (obj.type !== 'message' || !obj.message) continue;
+        if (obj.type !== "message" || !obj.message) {
+          continue;
+        }
 
-        const msg = obj.message;
-        const role = msg.role;
+        const role = obj.message.role;
         const timestamp = obj.timestamp || new Date().toISOString();
 
-        if (typeof msg.content === 'string') {
+        if (typeof obj.message.content === "string") {
           messages.push({
-            id: obj.id || Math.random().toString(),
-            type: role === 'user' ? 'user' : 'assistant',
+            id: obj.id || Math.random().toString(36).slice(2),
+            type: role === "user" ? "user" : role === "toolResult" ? "tool_result" : "assistant",
             role,
-            content: msg.content,
+            content: obj.message.content,
             timestamp,
             model: currentModel || undefined,
           });
-        } else if (Array.isArray(msg.content)) {
-          for (const block of msg.content) {
-            if (block.type === 'text' && block.text) {
-              messages.push({
-                id: (obj.id || '') + '-text',
-                type: role === 'user' ? 'user' : 'assistant',
-                role,
-                content: block.text,
-                timestamp,
-                model: currentModel || undefined,
-              });
-            } else if (block.type === 'tool_use' && block.name) {
-              messages.push({
-                id: block.id || (obj.id || '') + '-tool',
-                type: 'tool_use',
-                role,
-                content: `${block.name}(${block.input ? JSON.stringify(block.input).slice(0, 200) : ''})`,
-                timestamp,
-                toolName: block.name,
-                model: currentModel || undefined,
-              });
-            } else if (block.type === 'tool_result') {
-              const resultContent = Array.isArray(block.text)
-                ? (block.text as Array<{ type: string; text?: string }>).map((b) => b.text || '').join('\n')
-                : (block.text as string) || '';
-              messages.push({
-                id: (obj.id || '') + '-result',
-                type: 'tool_result',
-                role,
-                content: resultContent.slice(0, 500),
-                timestamp,
-                model: currentModel || undefined,
-              });
-            }
+          continue;
+        }
+
+        for (const block of obj.message.content) {
+          if (block.type === "text" && block.text) {
+            messages.push({
+              id: `${obj.id || Math.random().toString(36).slice(2)}-text`,
+              type: role === "user" ? "user" : role === "toolResult" ? "tool_result" : "assistant",
+              role,
+              content: block.text,
+              timestamp,
+              model: currentModel || undefined,
+            });
+            continue;
+          }
+
+          if (block.type === "toolCall" && block.name) {
+            const input = block.arguments ?? block.input;
+            messages.push({
+              id: block.id || `${obj.id || Math.random().toString(36).slice(2)}-tool`,
+              type: "tool_use",
+              role,
+              content: `${block.name}(${input ? JSON.stringify(input).slice(0, 300) : ""})`,
+              timestamp,
+              toolName: block.name,
+              model: currentModel || undefined,
+            });
+            continue;
+          }
+
+          if (role === "toolResult" && block.text) {
+            messages.push({
+              id: `${obj.id || Math.random().toString(36).slice(2)}-result`,
+              type: "tool_result",
+              role,
+              content: block.text.slice(0, 1000),
+              timestamp,
+              toolName: block.toolName,
+              model: currentModel || undefined,
+            });
           }
         }
       } catch {
-        // Skip malformed lines
+        // Skip malformed JSONL lines.
       }
     }
 
@@ -300,7 +288,7 @@ async function getSessionMessages(sessionId: string): Promise<NextResponse> {
       total: messages.length,
     });
   } catch (error) {
-    console.error('[sessions] Error reading session file:', error);
-    return NextResponse.json({ error: 'Failed to read session', messages: [] }, { status: 500 });
+    console.error("[sessions] Error reading session file:", error);
+    return NextResponse.json({ error: "Failed to read session", messages: [] }, { status: 500 });
   }
 }

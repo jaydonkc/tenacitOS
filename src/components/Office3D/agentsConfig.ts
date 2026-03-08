@@ -1,17 +1,6 @@
 /**
- * Office 3D — Agent Configuration
- *
- * This file defines the visual layout of agents in the 3D office.
- * Names, emojis and roles are loaded at runtime from the OpenClaw API
- * (/api/agents → openclaw.json), so you only need to set positions and colors here.
- *
- * Agent IDs correspond to workspace directory suffixes:
- *   id: "main"     → workspace/          (main agent)
- *   id: "studio"   → workspace-studio/
- *   id: "infra"    → workspace-infra/
- *   etc.
- *
- * Add, remove or reposition agents to match your own OpenClaw setup.
+ * Office 3D layout for the current OpenClaw stack.
+ * Live labels, status, and model data are loaded from `/api/office`.
  */
 
 export interface AgentConfig {
@@ -26,51 +15,43 @@ export interface AgentConfig {
 export const AGENTS: AgentConfig[] = [
   {
     id: "main",
-    name: process.env.NEXT_PUBLIC_AGENT_NAME || "Mission Control",
+    name: process.env.NEXT_PUBLIC_AGENT_NAME || "Main",
     emoji: process.env.NEXT_PUBLIC_AGENT_EMOJI || "🦞",
-    position: [0, 0, 0], // Center — main desk
-    color: "#FFCC00",
-    role: "Main Agent",
+    position: [0, 0, 0],
+    color: "#ff6b35",
+    role: "Coordinator",
   },
   {
-    id: "agent-2",
-    name: "Agent 2",
-    emoji: "🤖",
+    id: "coding",
+    name: "Coding",
+    emoji: "🧩",
     position: [-4, 0, -3],
-    color: "#4CAF50",
-    role: "Sub-agent",
+    color: "#60a5fa",
+    role: "Builder",
   },
   {
-    id: "agent-3",
-    name: "Agent 3",
-    emoji: "🤖",
+    id: "planner",
+    name: "Planner",
+    emoji: "🗺️",
     position: [4, 0, -3],
-    color: "#E91E63",
-    role: "Sub-agent",
+    color: "#f59e0b",
+    role: "Planning",
   },
   {
-    id: "agent-4",
-    name: "Agent 4",
-    emoji: "🤖",
+    id: "implementer",
+    name: "Implementer",
+    emoji: "🛠️",
     position: [-4, 0, 3],
-    color: "#0077B5",
-    role: "Sub-agent",
+    color: "#4ade80",
+    role: "Execution",
   },
   {
-    id: "agent-5",
-    name: "Agent 5",
-    emoji: "🤖",
+    id: "reviewer",
+    name: "Reviewer",
+    emoji: "🔍",
     position: [4, 0, 3],
-    color: "#9C27B0",
-    role: "Sub-agent",
-  },
-  {
-    id: "agent-6",
-    name: "Agent 6",
-    emoji: "🤖",
-    position: [0, 0, 6],
-    color: "#607D8B",
-    role: "Sub-agent",
+    color: "#a78bfa",
+    role: "Review",
   },
 ];
 
@@ -84,4 +65,11 @@ export interface AgentState {
   tokensPerHour?: number;
   tasksInQueue?: number;
   uptime?: number; // days
+}
+
+export function getIdleAgentState(id: string): AgentState {
+  return {
+    id,
+    status: "idle",
+  };
 }

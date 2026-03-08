@@ -1,4 +1,4 @@
-import { readFileSync } from "fs";
+import { readOpenClawConfig } from "@/lib/openclaw-runtime";
 
 export interface GatewayConfig {
   url: string;
@@ -12,8 +12,7 @@ export function getGatewayConfig(): GatewayConfig {
   let fileToken = "";
   let filePort = 18789;
   try {
-    const configPath = `${process.env.OPENCLAW_DIR || "/home/node/.openclaw"}/openclaw.json`;
-    const config = JSON.parse(readFileSync(configPath, "utf-8"));
+    const config = readOpenClawConfig();
     fileToken = config?.gateway?.auth?.token || "";
     filePort = config?.gateway?.port || 18789;
   } catch {
