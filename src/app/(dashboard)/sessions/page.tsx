@@ -89,7 +89,6 @@ function MessageBubble({ msg }: { msg: Message }) {
   const isUser = msg.type === "user";
   const isTool = msg.type === "tool_use";
   const isResult = msg.type === "tool_result";
-  const isAssistant = msg.type === "assistant";
 
   if (isTool) {
     return (
@@ -207,26 +206,44 @@ function SessionDetail({
   onClose: () => void;
 }) {
   const [messages, setMessages] = useState<Message[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(Boolean(session.sessionId));
+  const [error, setError] = useState<string | null>(
+    session.sessionId ? null : "No session file available"
+  );
 
   useEffect(() => {
     if (!session.sessionId) {
-      setLoading(false);
-      setError("No session file available");
       return;
     }
 
-    setLoading(true);
-    setError(null);
+    let cancelled = false;
+
     fetch(`/api/sessions?id=${session.sessionId}`)
       .then((r) => r.json())
       .then((data) => {
+        if (cancelled) {
+          return;
+        }
+
         setMessages(data.messages || []);
-        if (data.error) setError(data.error);
+        if (data.error) {
+          setError(data.error);
+        }
       })
-      .catch(() => setError("Failed to load messages"))
-      .finally(() => setLoading(false));
+      .catch(() => {
+        if (!cancelled) {
+          setError("Failed to load messages");
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, [session.sessionId]);
 
   const userCount = messages.filter((m) => m.type === "user").length;
@@ -957,6 +974,7 @@ export default function SessionsPage() {
       {/* Detail panel */}
       {selectedSession && (
         <SessionDetail
+          key={selectedSession.id}
           session={selectedSession}
           onClose={() => setSelectedSession(null)}
         />

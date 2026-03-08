@@ -58,6 +58,33 @@ export function OfficeCanvas({ agents }: OfficeCanvasProps) {
   const [spriteImages, setSpriteImages] = useState<Record<string, HTMLCanvasElement>>({});
   const [imagesLoaded, setImagesLoaded] = useState(false);
 
+  // Process sprite with chroma key (remove green #00FF00)
+  function processChromaKey(img: HTMLImageElement): HTMLCanvasElement {
+    const offscreen = document.createElement("canvas");
+    offscreen.width = img.width;
+    offscreen.height = img.height;
+    const ctx = offscreen.getContext("2d");
+    if (!ctx) return offscreen;
+
+    ctx.drawImage(img, 0, 0);
+
+    const imageData = ctx.getImageData(0, 0, offscreen.width, offscreen.height);
+    const data = imageData.data;
+
+    for (let i = 0; i < data.length; i += 4) {
+      const r = data[i];
+      const g = data[i + 1];
+      const b = data[i + 2];
+
+      if (r < 50 && g > 200 && b < 50) {
+        data[i + 3] = 0;
+      }
+    }
+
+    ctx.putImageData(imageData, 0, 0);
+    return offscreen;
+  }
+
   // Load and process images on mount
   useEffect(() => {
     let mounted = true;
@@ -105,105 +132,14 @@ export function OfficeCanvas({ agents }: OfficeCanvasProps) {
     };
   }, []);
 
-  // Process sprite with chroma key (remove green #00FF00)
-  const processChromaKey = (img: HTMLImageElement): HTMLCanvasElement => {
-    const offscreen = document.createElement("canvas");
-    offscreen.width = img.width;
-    offscreen.height = img.height;
-    const ctx = offscreen.getContext("2d");
-    if (!ctx) return offscreen;
-
-    // Draw sprite
-    ctx.drawImage(img, 0, 0);
-
-    // Get image data
-    const imageData = ctx.getImageData(0, 0, offscreen.width, offscreen.height);
-    const data = imageData.data;
-
-    // Remove green pixels (chroma key)
-    for (let i = 0; i < data.length; i += 4) {
-      const r = data[i];
-      const g = data[i + 1];
-      const b = data[i + 2];
-
-      // If pixel is green (#00FF00 or close to it)
-      if (r < 50 && g > 200 && b < 50) {
-        data[i + 3] = 0; // Set alpha to 0 (transparent)
-      }
-      // White chroma key removed - PNGs now have proper transparency
-    }
-
-    // Put processed data back
-    ctx.putImageData(imageData, 0, 0);
-    return offscreen;
-  };
-
-  useEffect(() => {
-    if (!imagesLoaded) return;
-
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-
-    // Set canvas size
-    canvas.width = 1200;
-    canvas.height = 675;
-
-    // Disable image smoothing for pixel-perfect rendering
-    ctx.imageSmoothingEnabled = false;
-
-    const animate = () => {
-      timeRef.current += 0.016; // ~60fps
-      render(ctx, timeRef.current);
-      animationFrameRef.current = requestAnimationFrame(animate);
-    };
-
-    animate();
-
-    return () => {
-      if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current);
-      }
-    };
-  }, [agents, hoveredAgent, imagesLoaded, bgImage, spriteImages]);
-
-  const render = (ctx: CanvasRenderingContext2D, time: number) => {
-    ctx.clearRect(0, 0, 1200, 675);
-
-    // 1. Draw background
-    if (bgImage) {
-      // Scale background to fit canvas (1920x1080 -> 1200x675)
-      ctx.drawImage(bgImage, 0, 0, bgImage.width, bgImage.height, 0, 0, 1200, 675);
-    }
-
-    // 2. Draw agents (sprites)
-    agents.forEach((agent) => {
-      const position = AGENT_POSITIONS[agent.id];
-      const sprite = spriteImages[agent.id];
-      if (position && sprite) {
-        drawAgent(ctx, agent, sprite, position, time, hoveredAgent === agent.id);
-      }
-    });
-
-    // 3. Draw speech bubbles
-    agents.forEach((agent) => {
-      const position = AGENT_POSITIONS[agent.id];
-      if (position && (agent.isActive || hoveredAgent === agent.id)) {
-        drawSpeechBubble(ctx, agent, position);
-      }
-    });
-  };
-
-  const drawAgent = (
+  function drawAgent(
     ctx: CanvasRenderingContext2D,
     agent: OfficeAgent,
     sprite: HTMLCanvasElement,
     position: { x: number; y: number },
     time: number,
     isHovered: boolean
-  ) => {
+  ) {
     // Scale position from 1920x1080 to 1200x675
     const x = (position.x / 1920) * 1200;
     const y = (position.y / 1080) * 675;
@@ -301,14 +237,14 @@ export function OfficeCanvas({ agents }: OfficeCanvasProps) {
       );
       ctx.restore();
     }
-  };
+  }
 
-  const drawSleepIndicator = (
+  function drawSleepIndicator(
     ctx: CanvasRenderingContext2D,
     x: number,
     y: number,
     time: number
-  ) => {
+  ) {
     const offset1 = Math.sin(time * 2) * 2;
     const offset2 = Math.sin(time * 2 + 0.5) * 3;
     const offset3 = Math.sin(time * 2 + 1) * 4;
@@ -330,13 +266,13 @@ export function OfficeCanvas({ agents }: OfficeCanvasProps) {
     ctx.fillText("z", x + 35, y - 28 + offset2);
     ctx.fillText("Z", x + 45, y - 36 + offset3);
     ctx.restore();
-  };
+  }
 
-  const drawSpeechBubble = (
+  function drawSpeechBubble(
     ctx: CanvasRenderingContext2D,
     agent: OfficeAgent,
     position: { x: number; y: number }
-  ) => {
+  ) {
     if (!agent.currentTask) return;
 
     // Scale position
@@ -408,16 +344,16 @@ export function OfficeCanvas({ agents }: OfficeCanvasProps) {
     lines.slice(0, 3).forEach((line, i) => {
       ctx.fillText(line, bubbleX + padding, bubbleY + padding + i * lineHeight);
     });
-  };
+  }
 
-  const roundRect = (
+  function roundRect(
     ctx: CanvasRenderingContext2D,
     x: number,
     y: number,
     width: number,
     height: number,
     radius: number
-  ) => {
+  ) {
     ctx.beginPath();
     ctx.moveTo(x + radius, y);
     ctx.lineTo(x + width - radius, y);
@@ -429,7 +365,58 @@ export function OfficeCanvas({ agents }: OfficeCanvasProps) {
     ctx.lineTo(x, y + radius);
     ctx.quadraticCurveTo(x, y, x + radius, y);
     ctx.closePath();
-  };
+  }
+
+  function render(ctx: CanvasRenderingContext2D, time: number) {
+    ctx.clearRect(0, 0, 1200, 675);
+
+    if (bgImage) {
+      ctx.drawImage(bgImage, 0, 0, bgImage.width, bgImage.height, 0, 0, 1200, 675);
+    }
+
+    agents.forEach((agent) => {
+      const position = AGENT_POSITIONS[agent.id];
+      const sprite = spriteImages[agent.id];
+      if (position && sprite) {
+        drawAgent(ctx, agent, sprite, position, time, hoveredAgent === agent.id);
+      }
+    });
+
+    agents.forEach((agent) => {
+      const position = AGENT_POSITIONS[agent.id];
+      if (position && (agent.isActive || hoveredAgent === agent.id)) {
+        drawSpeechBubble(ctx, agent, position);
+      }
+    });
+  }
+
+  useEffect(() => {
+    if (!imagesLoaded) return;
+
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    canvas.width = 1200;
+    canvas.height = 675;
+    ctx.imageSmoothingEnabled = false;
+
+    const animate = () => {
+      timeRef.current += 0.016;
+      render(ctx, timeRef.current);
+      animationFrameRef.current = requestAnimationFrame(animate);
+    };
+
+    animate();
+
+    return () => {
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+      }
+    };
+  }, [agents, hoveredAgent, imagesLoaded, bgImage, spriteImages]);
 
   const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;

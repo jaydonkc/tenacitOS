@@ -26,14 +26,41 @@ interface FileTreeProps {
   onSelect: (path: string) => void;
 }
 
-const getFileIcon = (name: string) => {
-  const lower = name.toLowerCase();
-  if (lower === "memory.md") return Brain;
-  if (lower === "soul.md") return Ghost;
-  if (lower === "user.md") return User;
-  if (lower === "agents.md") return BookOpen;
-  return FileText;
-};
+function TreeNodeIcon({
+  isFolder,
+  isExpanded,
+  fileName,
+  isSelected,
+}: {
+  isFolder: boolean;
+  isExpanded: boolean;
+  fileName: string;
+  isSelected: boolean;
+}) {
+  const lower = fileName.toLowerCase();
+  const style = {
+    color: isFolder
+      ? "#F59E0B"
+      : isSelected
+        ? "var(--text-primary)"
+        : "#60A5FA",
+  };
+  const className = "w-3.5 h-3.5 md:w-4 md:h-4";
+
+  if (isFolder) {
+    return isExpanded ? (
+      <FolderOpen className={className} style={style} />
+    ) : (
+      <Folder className={className} style={style} />
+    );
+  }
+
+  if (lower === "memory.md") return <Brain className={className} style={style} />;
+  if (lower === "soul.md") return <Ghost className={className} style={style} />;
+  if (lower === "user.md") return <User className={className} style={style} />;
+  if (lower === "agents.md") return <BookOpen className={className} style={style} />;
+  return <FileText className={className} style={style} />;
+}
 
 function TreeNode({
   node,
@@ -57,12 +84,6 @@ function TreeNode({
       onSelect(node.path);
     }
   };
-
-  const Icon = isFolder
-    ? isExpanded
-      ? FolderOpen
-      : Folder
-    : getFileIcon(node.name);
 
   return (
     <div>
@@ -97,15 +118,11 @@ function TreeNode({
           </span>
         )}
         {!isFolder && <span className="w-3.5 md:w-4" />}
-        <Icon
-          className="w-3.5 h-3.5 md:w-4 md:h-4"
-          style={{
-            color: isFolder
-              ? "#F59E0B"
-              : isSelected
-              ? "var(--text-primary)"
-              : "#60A5FA",
-          }}
+        <TreeNodeIcon
+          isFolder={isFolder}
+          isExpanded={isExpanded}
+          fileName={node.name}
+          isSelected={isSelected}
         />
         <span className="truncate">{node.name}</span>
       </button>

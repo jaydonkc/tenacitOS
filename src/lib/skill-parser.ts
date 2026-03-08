@@ -38,6 +38,17 @@ interface SkillsConfig {
   skills: ConfiguredSkill[];
 }
 
+interface OpenClawSkillAgentEntry {
+  id: string;
+  workspace?: string;
+}
+
+interface OpenClawSkillConfig {
+  agents?: {
+    list?: OpenClawSkillAgentEntry[];
+  };
+}
+
 const CONFIG_PATH = path.join(process.cwd(), 'data', 'configured-skills.json');
 const DEFAULT_SYSTEM_PATH = '/usr/lib/node_modules/openclaw/skills';
 const DEFAULT_WORKSPACE_PATH = path.join(OPENCLAW_DIR, 'skills');
@@ -182,10 +193,12 @@ function buildAgentSkillMap(): Map<string, string[]> {
   // Read from openclaw.json if possible
   let agentList: Array<{ id: string; workspace: string }> = [];
   try {
-    const openclawConfig = JSON.parse(fs.readFileSync(path.join(openclawDir, 'openclaw.json'), 'utf-8'));
-    agentList = (openclawConfig?.agents?.list || []).map((a: any) => ({
-      id: a.id,
-      workspace: a.workspace || path.join(openclawDir, 'workspace'),
+    const openclawConfig = JSON.parse(
+      fs.readFileSync(path.join(openclawDir, 'openclaw.json'), 'utf-8')
+    ) as OpenClawSkillConfig;
+    agentList = (openclawConfig.agents?.list || []).map((agent) => ({
+      id: agent.id,
+      workspace: agent.workspace || path.join(openclawDir, 'workspace'),
     }));
   } catch {
     // Fallback: scan directories

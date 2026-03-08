@@ -753,6 +753,7 @@ export function FileBrowser({ workspace, path, onNavigate, viewMode = "list" }: 
       {/* File Preview Modal */}
       {previewFile && (
         <FilePreview
+          key={`${previewFile.workspace}:${previewFile.path}`}
           workspace={previewFile.workspace}
           path={previewFile.path}
           name={previewFile.name}

@@ -10,6 +10,27 @@ interface AvatarModelProps {
   position: [number, number, number];
 }
 
+function LoadedAvatarModel({
+  modelPath,
+  position,
+}: {
+  modelPath: string;
+  position: [number, number, number];
+}) {
+  const { scene } = useGLTF(modelPath);
+
+  return (
+    <primitive
+      object={scene.clone()}
+      position={position}
+      scale={0.8}
+      rotation={[0, Math.PI, 0]}
+      castShadow
+      receiveShadow
+    />
+  );
+}
+
 export default function AvatarModel({ agent, position }: AvatarModelProps) {
   const modelPath = `/models/${agent.id}.glb`;
   const [exists, setExists] = useState<boolean>(false);
@@ -38,17 +59,5 @@ export default function AvatarModel({ agent, position }: AvatarModelProps) {
     );
   }
 
-  // Load and display the GLB model
-  const { scene } = useGLTF(modelPath);
-  
-  return (
-    <primitive
-      object={scene.clone()}
-      position={position}
-      scale={0.8} // Ready Player Me avatars are ~1.8m tall, scale to fit desk
-      rotation={[0, Math.PI, 0]} // Face forward
-      castShadow
-      receiveShadow
-    />
-  );
+  return <LoadedAvatarModel modelPath={modelPath} position={position} />;
 }
