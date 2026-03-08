@@ -254,6 +254,7 @@ export default function Office3D() {
       {/* Side panel shown when an agent is selected */}
       {selectedAgent && officeAgents.find((agent) => agent.id === selectedAgent) && (
         <AgentPanel
+          key={selectedAgent}
           agent={officeAgents.find((agent) => agent.id === selectedAgent)!}
           state={agentStates[selectedAgent] ?? getIdleAgentState(selectedAgent)}
           onClose={handleClosePanel}

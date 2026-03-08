@@ -6,7 +6,7 @@ import { calculateCost, normalizeModelId } from "./pricing";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const HOUR_MS = 60 * 60 * 1000;
-const TRANSCRIPT_FILE_PATTERN = /\.jsonl(?:\.|$)/;
+const TRANSCRIPT_FILE_PATTERN = /\.jsonl$/;
 
 interface UsageCostBreakdown {
   input?: number;
@@ -74,6 +74,14 @@ interface DashboardBreakdown {
   inputTokens: number;
   outputTokens: number;
   percentOfTotal: number;
+}
+
+interface AgentBreakdown extends DashboardBreakdown {
+  agent: string;
+}
+
+interface ModelBreakdown extends DashboardBreakdown {
+  model: string;
 }
 
 let cachedEvents:
@@ -316,18 +324,35 @@ function addEventToBucket(bucket: AggregateBucket, event: UsageEvent): void {
   bucket.totalTokens += event.totalTokens;
 }
 
-function toBreakdownEntries(
-  data: Map<string, AggregateBucket>,
-  keyName: "agent" | "model"
-): Array<Record<"agent" | "model", string> & DashboardBreakdown> {
-  const rows = Array.from(data.entries()).map(([key, bucket]) => ({
-    [keyName]: key,
+function toAgentBreakdownEntries(data: Map<string, AggregateBucket>): AgentBreakdown[] {
+  const rows: AgentBreakdown[] = Array.from(data.entries()).map(([agent, bucket]) => ({
+    agent,
     cost: roundCurrency(bucket.cost),
     tokens: bucket.totalTokens,
     inputTokens: bucket.inputTokens,
     outputTokens: bucket.outputTokens,
     percentOfTotal: 0,
-  })) as Array<Record<"agent" | "model", string> & DashboardBreakdown>;
+  }));
+
+  const totalCost = rows.reduce((sum, row) => sum + row.cost, 0);
+
+  return rows
+    .map((row) => ({
+      ...row,
+      percentOfTotal: totalCost > 0 ? (row.cost / totalCost) * 100 : 0,
+    }))
+    .sort((a, b) => b.cost - a.cost);
+}
+
+function toModelBreakdownEntries(data: Map<string, AggregateBucket>): ModelBreakdown[] {
+  const rows: ModelBreakdown[] = Array.from(data.entries()).map(([model, bucket]) => ({
+    model,
+    cost: roundCurrency(bucket.cost),
+    tokens: bucket.totalTokens,
+    inputTokens: bucket.inputTokens,
+    outputTokens: bucket.outputTokens,
+    percentOfTotal: 0,
+  }));
 
   const totalCost = rows.reduce((sum, row) => sum + row.cost, 0);
 
@@ -429,8 +454,8 @@ export async function loadCostDashboardData(days: number, budget: number) {
     lastMonth: roundCurrency(lastMonth),
     projected: roundCurrency(projected),
     budget,
-    byAgent: toBreakdownEntries(byAgent, "agent"),
-    byModel: toBreakdownEntries(byModel, "model"),
+    byAgent: toAgentBreakdownEntries(byAgent),
+    byModel: toModelBreakdownEntries(byModel),
     daily,
     hourly,
     updatedAt: nowMs,

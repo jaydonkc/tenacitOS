@@ -39,6 +39,30 @@ interface FirewallRule {
   comment: string;
 }
 
+interface DockerContainerEntry {
+  id: string;
+  name: string;
+  image: string;
+  state: string;
+  status: string;
+  ports: string;
+  backend: "docker";
+  cpu: string | null;
+  memUsage: string | null;
+  memPercent: number | null;
+  netIO: string | null;
+  pids: number | null;
+}
+
+function parseDockerPercent(value: string): number | null {
+  if (!value) {
+    return null;
+  }
+
+  const parsed = parseFloat(value.replace("%", "").trim());
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 // Normalize PM2 status to a common set
 function normalizePm2Status(status: string): string {
   switch (status) {
@@ -223,6 +247,76 @@ export async function GET() {
       services.push({ ...svc, backend: "none" });
     }
 
+    // ── Docker containers ────────────────────────────────────────────────────
+    let dockerAvailable = false;
+    const dockerContainers: DockerContainerEntry[] = [];
+    try {
+      const { stdout: dockerPs } = await execAsync(
+        "docker ps -a --format '{{.ID}}\t{{.Names}}\t{{.Image}}\t{{.State}}\t{{.Status}}\t{{.Ports}}' 2>/dev/null"
+      );
+      const statsMap = new Map<
+        string,
+        {
+          cpu: string | null;
+          memUsage: string | null;
+          memPercent: number | null;
+          netIO: string | null;
+          pids: number | null;
+        }
+      >();
+
+      try {
+        const { stdout: dockerStats } = await execAsync(
+          "docker stats --no-stream --format '{{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}\t{{.MemPerc}}\t{{.NetIO}}\t{{.PIDs}}' 2>/dev/null"
+        );
+
+        for (const line of dockerStats.trim().split("\n").filter(Boolean)) {
+          const [name, cpu, memUsage, memPercent, netIO, pids] = line.split("\t");
+          if (!name) {
+            continue;
+          }
+
+          const parsedPids = parseInt((pids || "").trim(), 10);
+          statsMap.set(name, {
+            cpu: cpu?.trim() || null,
+            memUsage: memUsage?.trim() || null,
+            memPercent: parseDockerPercent(memPercent || ""),
+            netIO: netIO?.trim() || null,
+            pids: Number.isFinite(parsedPids) ? parsedPids : null,
+          });
+        }
+      } catch (error) {
+        console.error("Failed to get docker stats:", error);
+      }
+
+      for (const line of dockerPs.trim().split("\n").filter(Boolean)) {
+        const [id, name, image, state, status, ports] = line.split("\t");
+        if (!id || !name) {
+          continue;
+        }
+
+        const stats = statsMap.get(name);
+        dockerContainers.push({
+          id: id.trim(),
+          name: name.trim(),
+          image: image?.trim() || "unknown",
+          state: state?.trim() || "unknown",
+          status: status?.trim() || state?.trim() || "unknown",
+          ports: ports?.trim() || "—",
+          backend: "docker",
+          cpu: stats?.cpu || null,
+          memUsage: stats?.memUsage || null,
+          memPercent: stats?.memPercent ?? null,
+          netIO: stats?.netIO || null,
+          pids: stats?.pids ?? null,
+        });
+      }
+
+      dockerAvailable = true;
+    } catch (error) {
+      console.error("Failed to get Docker containers:", error);
+    }
+
     // ── Tailscale VPN ─────────────────────────────────────────────────────────
     let tailscaleActive = false;
     let tailscaleIp = "100.122.105.85";
@@ -302,6 +396,12 @@ export async function GET() {
       },
       network,
       systemd: services, // kept field name for backwards compat with page.tsx
+      docker: {
+        available: dockerAvailable,
+        total: dockerContainers.length,
+        running: dockerContainers.filter((container) => container.state === "running").length,
+        containers: dockerContainers,
+      },
       tailscale: {
         active: tailscaleActive,
         ip: tailscaleIp,

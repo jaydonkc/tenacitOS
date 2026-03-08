@@ -116,11 +116,14 @@ export default function AgentsPage() {
             className="flex items-center gap-2 px-4 py-2 font-medium transition-all"
             style={{
               color: activeTab === id ? "var(--accent)" : "var(--text-secondary)",
-              borderBottom: activeTab === id ? "2px solid var(--accent)" : "2px solid transparent",
-              background: "none", border: "none", cursor: "pointer",
+              backgroundColor: "transparent",
+              borderTopWidth: 0,
+              borderRightWidth: 0,
+              borderLeftWidth: 0,
               borderBottomStyle: "solid",
               borderBottomWidth: "2px",
               borderBottomColor: activeTab === id ? "var(--accent)" : "transparent",
+              cursor: "pointer",
               paddingBottom: "0.5rem",
             }}
           >

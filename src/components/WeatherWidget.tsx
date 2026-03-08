@@ -3,41 +3,82 @@
 import { useEffect, useState } from "react";
 import { format } from "date-fns";
 import { Wind, Droplets, Thermometer } from "lucide-react";
+import { parseOpenMeteoWeather, WEATHER_API_URL, type WeatherData } from "@/lib/weather";
 
-interface Forecast {
-  day: string;
-  max: number;
-  min: number;
-  emoji: string;
+const WEATHER_CACHE_KEY = "tenacitos.weather.v2";
+
+function readCachedWeather(): WeatherData | null {
+  try {
+    const raw = window.localStorage.getItem(WEATHER_CACHE_KEY);
+    if (!raw) {
+      return null;
+    }
+
+    return JSON.parse(raw) as WeatherData;
+  } catch {
+    return null;
+  }
 }
 
-interface WeatherData {
-  city: string;
-  temp: number;
-  feels_like: number;
-  humidity: number;
-  wind: number;
-  precipitation: number;
-  condition: string;
-  emoji: string;
-  forecast: Forecast[];
-  updated: string;
+function writeCachedWeather(weather: WeatherData) {
+  try {
+    window.localStorage.setItem(WEATHER_CACHE_KEY, JSON.stringify(weather));
+  } catch {
+    // Ignore client storage failures.
+  }
 }
 
 export function WeatherWidget() {
   const [weather, setWeather] = useState<WeatherData | null>(null);
   const [loading, setLoading] = useState(true);
   const [now, setNow] = useState(new Date());
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch("/api/weather")
-      .then((r) => r.json())
-      .then((d) => { setWeather(d); setLoading(false); })
-      .catch(() => setLoading(false));
+    let cancelled = false;
+
+    const loadWeather = async () => {
+      const cachedWeather = readCachedWeather();
+      if (cachedWeather && !cancelled) {
+        setWeather(cachedWeather);
+        setError(null);
+        setLoading(false);
+      }
+
+      try {
+        const res = await fetch(WEATHER_API_URL, { cache: "no-store" });
+        if (!res.ok) {
+          throw new Error(`Weather upstream returned ${res.status}`);
+        }
+
+        const freshWeather = parseOpenMeteoWeather(await res.json());
+        if (!cancelled) {
+          setWeather(freshWeather);
+          setError(null);
+          setLoading(false);
+        }
+        writeCachedWeather(freshWeather);
+      } catch {
+        if (!cancelled) {
+          if (!cachedWeather) {
+            setWeather(null);
+            setError("Weather unavailable");
+            setLoading(false);
+          } else {
+            setError(null);
+          }
+        }
+      }
+    };
+
+    void loadWeather();
 
     // Update clock every second
     const timer = setInterval(() => setNow(new Date()), 1000);
-    return () => clearInterval(timer);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
   }, []);
 
   if (loading) {
@@ -55,8 +96,23 @@ export function WeatherWidget() {
     );
   }
 
-  if (!weather || (weather as unknown as Record<string, unknown>).error) {
-    return null;
+  if (!weather) {
+    return (
+      <div style={{
+        padding: "1.25rem",
+        backgroundColor: "var(--card)",
+        borderRadius: "0.75rem",
+        border: "1px solid var(--border)",
+        minHeight: "120px",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+      }}>
+        <span style={{ color: "var(--text-muted)", fontSize: "0.875rem" }}>
+          {error || "Weather unavailable"}
+        </span>
+      </div>
+    );
   }
 
   return (
@@ -85,7 +141,7 @@ export function WeatherWidget() {
         <div style={{ textAlign: "right" }}>
           <div style={{ fontSize: "2.5rem", lineHeight: 1 }}>{weather.emoji}</div>
           <div style={{ fontSize: "1.75rem", fontWeight: 800, color: "var(--text-primary)", lineHeight: 1.1 }}>
-            {weather.temp}°C
+            {weather.temp}°F
           </div>
           <div style={{ fontSize: "0.75rem", color: "var(--text-secondary)", marginTop: "0.125rem" }}>
             {weather.condition}
@@ -97,7 +153,7 @@ export function WeatherWidget() {
       <div style={{ display: "flex", gap: "1rem", marginBottom: "0.875rem", paddingTop: "0.75rem", borderTop: "1px solid var(--border)" }}>
         <div style={{ display: "flex", alignItems: "center", gap: "0.375rem", fontSize: "0.8rem", color: "var(--text-secondary)" }}>
           <Thermometer className="w-3.5 h-3.5" style={{ color: "var(--accent)" }} />
-          Feels {weather.feels_like}°C
+          Feels {weather.feels_like}°F
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: "0.375rem", fontSize: "0.8rem", color: "var(--text-secondary)" }}>
           <Droplets className="w-3.5 h-3.5" style={{ color: "#60a5fa" }} />
@@ -105,7 +161,7 @@ export function WeatherWidget() {
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: "0.375rem", fontSize: "0.8rem", color: "var(--text-secondary)" }}>
           <Wind className="w-3.5 h-3.5" style={{ color: "#94a3b8" }} />
-          {weather.wind} km/h
+          {weather.wind} mph
         </div>
       </div>
 
@@ -125,8 +181,8 @@ export function WeatherWidget() {
             >
               <div style={{ fontSize: "0.7rem", color: "var(--text-muted)", marginBottom: "0.25rem" }}>{dayName}</div>
               <div style={{ fontSize: "1.25rem", lineHeight: 1, marginBottom: "0.25rem" }}>{day.emoji}</div>
-              <div style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--text-primary)" }}>{day.max}°</div>
-              <div style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>{day.min}°</div>
+              <div style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--text-primary)" }}>{day.max}°F</div>
+              <div style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>{day.min}°F</div>
             </div>
           );
         })}

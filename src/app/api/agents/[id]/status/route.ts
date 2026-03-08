@@ -54,10 +54,12 @@ export async function GET(
       .filter((session) => (session.agentId || session.key.split(":")[1]) === id)
       .map((session) => ({
         id: session.sessionId || session.key,
+        sessionId: session.sessionId || null,
         key: session.key,
         updatedAt: session.updatedAt || null,
         model: session.model || null,
-      }));
+      }))
+      .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
 
     const telegramAccount = config.channels?.telegram?.accounts?.[id];
 

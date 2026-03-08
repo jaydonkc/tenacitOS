@@ -1,9 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { DollarSign, TrendingUp, TrendingDown, AlertTriangle, Calendar, PieChart } from "lucide-react";
+import { DollarSign, TrendingUp, TrendingDown } from "lucide-react";
 import { LineChart, Line, BarChart, Bar, PieChart as RePieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
-import { MODEL_PRICING } from "@/lib/pricing";
 
 interface CostData {
   today: number;
@@ -72,8 +71,6 @@ export default function CostsPage() {
     );
   }
 
-  const budgetPercent = (costData.thisMonth / costData.budget) * 100;
-  const budgetColor = budgetPercent < 60 ? "var(--success)" : budgetPercent < 85 ? "var(--warning)" : "var(--error)";
   const todayChange =
     costData.yesterday > 0
       ? ((costData.today - costData.yesterday) / costData.yesterday) * 100
@@ -99,7 +96,7 @@ export default function CostsPage() {
             Costs & Analytics
           </h1>
           <p style={{ color: "var(--text-secondary)" }}>
-            Live usage and cost tracking from OpenClaw session logs
+            Live usage and cost tracking from the same OpenClaw session-log source as `usage.cost`
           </p>
           {costData.updatedAt && (
             <p className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>
@@ -127,7 +124,7 @@ export default function CostsPage() {
       </div>
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {/* Today */}
         <div className="p-6 rounded-xl" style={{ backgroundColor: "var(--card)", border: "1px solid var(--border)" }}>
           <div className="flex items-center justify-between mb-2">
@@ -194,28 +191,6 @@ export default function CostsPage() {
           </div>
           <p className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>
             Based on current pace
-          </p>
-        </div>
-
-        {/* Budget */}
-        <div className="p-6 rounded-xl" style={{ backgroundColor: "var(--card)", border: "1px solid var(--border)" }}>
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-sm" style={{ color: "var(--text-secondary)" }}>Budget</span>
-            {budgetPercent > 80 && (
-              <AlertTriangle className="w-4 h-4" style={{ color: "var(--error)" }} />
-            )}
-          </div>
-          <div className="text-3xl font-bold" style={{ color: budgetColor }}>
-            {budgetPercent.toFixed(0)}%
-          </div>
-          <div className="mt-2 h-2 rounded-full overflow-hidden" style={{ backgroundColor: "var(--card-elevated)" }}>
-            <div
-              className="h-full transition-all duration-500"
-              style={{ width: `${Math.min(budgetPercent, 100)}%`, backgroundColor: budgetColor }}
-            />
-          </div>
-          <p className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>
-            ${costData.thisMonth.toFixed(2)} / ${costData.budget.toFixed(2)}
           </p>
         </div>
       </div>
@@ -320,39 +295,6 @@ export default function CostsPage() {
               <Bar dataKey="output" stackId="a" fill="#F59E0B" name="Output Tokens" />
             </BarChart>
           </ResponsiveContainer>
-        </div>
-      </div>
-
-      {/* Model Pricing Table */}
-      <div className="p-6 rounded-xl" style={{ backgroundColor: "var(--card)", border: "1px solid var(--border)" }}>
-        <h3 className="text-lg font-semibold mb-4" style={{ color: "var(--text-primary)" }}>
-          Model Pricing (per 1M tokens)
-        </h3>
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead>
-              <tr style={{ borderBottom: "1px solid var(--border)" }}>
-                <th className="text-left py-3 px-4 text-sm font-medium" style={{ color: "var(--text-secondary)" }}>Model</th>
-                <th className="text-right py-3 px-4 text-sm font-medium" style={{ color: "var(--text-secondary)" }}>Input</th>
-                <th className="text-right py-3 px-4 text-sm font-medium" style={{ color: "var(--text-secondary)" }}>Output</th>
-                <th className="text-right py-3 px-4 text-sm font-medium" style={{ color: "var(--text-secondary)" }}>Cache Read</th>
-                <th className="text-right py-3 px-4 text-sm font-medium" style={{ color: "var(--text-secondary)" }}>Cache Write</th>
-              </tr>
-            </thead>
-            <tbody>
-              {MODEL_PRICING.map((pricing) => (
-                <tr key={pricing.id} style={{ borderBottom: "1px solid var(--border)" }}>
-                  <td className="py-3 px-4">
-                    <span className="font-medium" style={{ color: "var(--text-primary)" }}>{pricing.name}</span>
-                  </td>
-                  <td className="py-3 px-4 text-right" style={{ color: "var(--text-primary)" }}>${pricing.inputPricePerMillion}</td>
-                  <td className="py-3 px-4 text-right" style={{ color: "var(--text-primary)" }}>${pricing.outputPricePerMillion}</td>
-                  <td className="py-3 px-4 text-right" style={{ color: "var(--text-secondary)" }}>${pricing.cacheReadPricePerMillion || 0}</td>
-                  <td className="py-3 px-4 text-right" style={{ color: "var(--text-secondary)" }}>${pricing.cacheWritePricePerMillion || 0}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
         </div>
       </div>
 

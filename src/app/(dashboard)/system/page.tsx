@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Cpu, HardDrive, MemoryStick, Activity, Network, Server, ShieldCheck, RotateCw, Wifi, Monitor, Play, Square, X, Loader2, Terminal, ArrowDown, ArrowUp } from "lucide-react";
+import { Cpu, HardDrive, MemoryStick, Network, Server, ShieldCheck, RotateCw, Wifi, Monitor, Play, Square, X, Loader2, Terminal, ArrowDown, ArrowUp } from "lucide-react";
 
 interface SystemdService {
   name: string;
@@ -29,12 +29,28 @@ interface FirewallRule {
   comment: string;
 }
 
+interface DockerContainer {
+  id: string;
+  name: string;
+  image: string;
+  state: string;
+  status: string;
+  ports: string;
+  backend: "docker";
+  cpu: string | null;
+  memUsage: string | null;
+  memPercent: number | null;
+  netIO: string | null;
+  pids: number | null;
+}
+
 interface SystemData {
   cpu: { usage: number; cores: number[]; loadAvg: number[] };
   ram: { total: number; used: number; free: number; cached: number };
   disk: { total: number; used: number; free: number; percent: number };
   network: { rx: number; tx: number };
   systemd: SystemdService[];
+  docker: { available: boolean; total: number; running: number; containers: DockerContainer[] };
   tailscale: { active: boolean; ip: string; devices: TailscaleDevice[] };
   firewall: { active: boolean; rules: FirewallRule[]; ruleCount: number };
 }
@@ -61,6 +77,54 @@ function formatBytes(bytes: number): string {
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
+
+function formatStatusLabel(status: string): string {
+  return status.replace(/_/g, " ");
+}
+
+function getStatusStyles(status: string): { dot: string; bg: string; text: string } {
+  switch (status) {
+    case "active":
+    case "running":
+      return {
+        dot: "var(--success)",
+        bg: "var(--success-bg)",
+        text: "var(--success)",
+      };
+    case "failed":
+    case "dead":
+      return {
+        dot: "var(--error)",
+        bg: "var(--error-bg)",
+        text: "var(--error)",
+      };
+    case "activating":
+    case "restarting":
+      return {
+        dot: "var(--warning)",
+        bg: "rgba(245,158,11,0.14)",
+        text: "var(--warning)",
+      };
+    case "not_deployed":
+      return {
+        dot: "var(--info, #3b82f6)",
+        bg: "rgba(59,130,246,0.12)",
+        text: "#60a5fa",
+      };
+    default:
+      return {
+        dot: "var(--text-muted)",
+        bg: "var(--card-elevated)",
+        text: "var(--text-muted)",
+      };
+  }
+}
+
+type ActionTarget = {
+  name: string;
+  backend?: string;
+  status: string;
+};
 
 export default function SystemMonitorPage() {
   const [systemData, setSystemData] = useState<SystemData | null>(null);
@@ -97,19 +161,20 @@ export default function SystemMonitorPage() {
     setTimeout(() => setToast(null), 3000);
   };
 
-  const handleServiceAction = async (svc: SystemdService, action: "restart" | "stop" | "start" | "logs") => {
-    const key = `${svc.name}-${action}`;
+  const handleServiceAction = async (svc: ActionTarget, action: "restart" | "stop" | "start" | "logs") => {
+    const backend = svc.backend || "pm2";
+    const key = `${backend}:${svc.name}-${action}`;
     setActionLoading((prev) => ({ ...prev, [key]: true }));
 
     try {
       if (action === "logs") {
-        setLogsModal({ name: svc.name, backend: svc.backend || "pm2", content: "", loading: true });
+        setLogsModal({ name: svc.name, backend, content: "", loading: true });
       }
 
       const res = await fetch("/api/system/services", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: svc.name, backend: svc.backend || "pm2", action }),
+        body: JSON.stringify({ name: svc.name, backend, action }),
       });
 
       const data = await res.json();
@@ -117,7 +182,7 @@ export default function SystemMonitorPage() {
       if (!res.ok) throw new Error(data.error || "Action failed");
 
       if (action === "logs") {
-        setLogsModal({ name: svc.name, backend: svc.backend || "pm2", content: data.output, loading: false });
+        setLogsModal({ name: svc.name, backend, content: data.output, loading: false });
       } else {
         showToast(`✅ ${svc.name}: ${action} successful`);
         // Refresh data after action
@@ -129,7 +194,7 @@ export default function SystemMonitorPage() {
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Action failed";
       if (action === "logs") {
-        setLogsModal({ name: svc.name, backend: svc.backend || "pm2", content: `Error: ${msg}`, loading: false });
+        setLogsModal({ name: svc.name, backend, content: `Error: ${msg}`, loading: false });
       } else {
         showToast(`❌ ${svc.name}: ${msg}`, "error");
       }
@@ -166,6 +231,7 @@ export default function SystemMonitorPage() {
   const diskColor = systemData.disk.percent < 60 ? "var(--success)" : systemData.disk.percent < 85 ? "var(--warning)" : "var(--error)";
 
   const activeServices = systemData.systemd.filter((s) => s.status === "active").length;
+  const runningContainers = systemData.docker.containers.filter((container) => container.state === "running").length;
 
   return (
     <div className="space-y-6">
@@ -354,9 +420,10 @@ export default function SystemMonitorPage() {
                 <tbody>
                   {systemData.systemd.map((svc) => {
                     const isActionable = svc.backend === "pm2" || svc.backend === "systemd";
-                    const restartKey = `${svc.name}-restart`;
-                    const stopKey = `${svc.name}-stop`;
-                    const logsKey = `${svc.name}-logs`;
+                    const statusStyles = getStatusStyles(svc.status);
+                    const restartKey = `${svc.backend || "pm2"}:${svc.name}-restart`;
+                    const stopKey = `${svc.backend || "pm2"}:${svc.name}-stop`;
+                    const logsKey = `${svc.backend || "pm2"}:${svc.name}-logs`;
 
                     return (
                       <tr key={svc.name} style={{ borderBottom: "1px solid var(--border)" }}>
@@ -380,27 +447,13 @@ export default function SystemMonitorPage() {
                           <div className="flex items-center gap-2 flex-wrap">
                             <div
                               className="w-2 h-2 rounded-full flex-shrink-0"
-                              style={{
-                                backgroundColor:
-                                  svc.status === "active" ? "var(--success)" :
-                                  svc.status === "not_deployed" ? "var(--info, #3b82f6)" :
-                                  svc.status === "failed" ? "var(--error)" : "var(--text-muted)",
-                              }}
+                              style={{ backgroundColor: statusStyles.dot }}
                             />
                             <span
                               className="px-2 py-1 rounded text-xs font-medium"
-                              style={{
-                                backgroundColor:
-                                  svc.status === "active" ? "var(--success-bg)" :
-                                  svc.status === "not_deployed" ? "rgba(59,130,246,0.12)" :
-                                  svc.status === "failed" ? "var(--error-bg)" : "var(--card-elevated)",
-                                color:
-                                  svc.status === "active" ? "var(--success)" :
-                                  svc.status === "not_deployed" ? "#60a5fa" :
-                                  svc.status === "failed" ? "var(--error)" : "var(--text-muted)",
-                              }}
+                              style={{ backgroundColor: statusStyles.bg, color: statusStyles.text }}
                             >
-                              {svc.status === "not_deployed" ? "not deployed" : svc.status}
+                              {formatStatusLabel(svc.status)}
                             </span>
                             {svc.backend && svc.backend !== "none" && (
                               <span
@@ -466,6 +519,130 @@ export default function SystemMonitorPage() {
                 </tbody>
               </table>
             </div>
+          </div>
+
+          <div className="p-6 rounded-xl" style={{ backgroundColor: "var(--card)", border: "1px solid var(--border)" }}>
+            <h3 className="text-lg font-semibold mb-4 flex items-center gap-2" style={{ color: "var(--text-primary)" }}>
+              <Server className="w-5 h-5" style={{ color: "var(--accent)" }} />
+              Docker Containers ({runningContainers}/{systemData.docker.total} running)
+            </h3>
+            {!systemData.docker.available ? (
+              <p className="text-sm" style={{ color: "var(--text-secondary)" }}>
+                Docker is not available from the monitor API in this environment.
+              </p>
+            ) : systemData.docker.containers.length === 0 ? (
+              <p className="text-sm" style={{ color: "var(--text-secondary)" }}>
+                No containers found.
+              </p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr style={{ borderBottom: "1px solid var(--border)" }}>
+                      <th className="text-left py-2 px-3 text-sm font-medium" style={{ color: "var(--text-secondary)" }}>Container</th>
+                      <th className="text-left py-2 px-3 text-sm font-medium" style={{ color: "var(--text-secondary)" }}>Image</th>
+                      <th className="text-left py-2 px-3 text-sm font-medium" style={{ color: "var(--text-secondary)" }}>Status</th>
+                      <th className="text-left py-2 px-3 text-sm font-medium" style={{ color: "var(--text-secondary)" }}>Usage</th>
+                      <th className="text-right py-2 px-3 text-sm font-medium" style={{ color: "var(--text-secondary)" }}>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {systemData.docker.containers.map((container) => {
+                      const statusStyles = getStatusStyles(container.state);
+                      const isRunning = container.state === "running";
+                      const restartKey = `docker:${container.name}-restart`;
+                      const stopKey = `docker:${container.name}-stop`;
+                      const logsKey = `docker:${container.name}-logs`;
+
+                      return (
+                        <tr key={container.id} style={{ borderBottom: "1px solid var(--border)" }}>
+                          <td className="py-3 px-3">
+                            <div className="flex flex-col gap-0.5">
+                              <span className="font-mono font-medium" style={{ color: "var(--text-primary)" }}>{container.name}</span>
+                              <span className="text-xs" style={{ color: "var(--text-muted)" }}>
+                                {container.id}
+                                {container.ports && container.ports !== "—" ? ` · ${container.ports}` : ""}
+                              </span>
+                            </div>
+                          </td>
+                          <td className="py-3 px-3">
+                            <span className="text-sm" style={{ color: "var(--text-secondary)" }}>{container.image}</span>
+                          </td>
+                          <td className="py-3 px-3">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: statusStyles.dot }} />
+                              <span
+                                className="px-2 py-1 rounded text-xs font-medium"
+                                style={{ backgroundColor: statusStyles.bg, color: statusStyles.text }}
+                              >
+                                {formatStatusLabel(container.state)}
+                              </span>
+                              <span className="text-xs" style={{ color: "var(--text-muted)" }}>
+                                {container.status}
+                              </span>
+                            </div>
+                          </td>
+                          <td className="py-3 px-3">
+                            <div className="flex flex-col gap-0.5">
+                              <span className="text-sm" style={{ color: "var(--text-secondary)" }}>
+                                {container.cpu || "—"} CPU
+                                {container.memUsage ? ` · ${container.memUsage}` : ""}
+                                {container.memPercent != null ? ` (${container.memPercent.toFixed(1)}%)` : ""}
+                              </span>
+                              <span className="text-xs" style={{ color: "var(--text-muted)" }}>
+                                {container.netIO ? `${container.netIO} net` : "No network data"}
+                                {container.pids != null ? ` · ${container.pids} PIDs` : ""}
+                              </span>
+                            </div>
+                          </td>
+                          <td className="py-3 px-3">
+                            <div className="flex justify-end gap-1">
+                              <button
+                                onClick={() => handleServiceAction(container, "restart")}
+                                disabled={actionLoading[restartKey]}
+                                className="p-1.5 rounded transition-colors"
+                                title="Restart"
+                                style={{ color: "var(--text-muted)", background: "none", border: "none", cursor: "pointer" }}
+                              >
+                                {actionLoading[restartKey] ? (
+                                  <Loader2 className="w-4 h-4 animate-spin" />
+                                ) : (
+                                  <RotateCw className="w-4 h-4" />
+                                )}
+                              </button>
+
+                              <button
+                                onClick={() => handleServiceAction(container, isRunning ? "stop" : "start")}
+                                disabled={actionLoading[stopKey]}
+                                className="p-1.5 rounded transition-colors"
+                                title={isRunning ? "Stop" : "Start"}
+                                style={{ color: isRunning ? "var(--error)" : "var(--success)", background: "none", border: "none", cursor: "pointer" }}
+                              >
+                                {isRunning ? <Square className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+                              </button>
+
+                              <button
+                                onClick={() => handleServiceAction(container, "logs")}
+                                disabled={actionLoading[logsKey]}
+                                className="p-1.5 rounded transition-colors"
+                                title="View Logs"
+                                style={{ color: "var(--text-muted)", background: "none", border: "none", cursor: "pointer" }}
+                              >
+                                {actionLoading[logsKey] ? (
+                                  <Loader2 className="w-4 h-4 animate-spin" />
+                                ) : (
+                                  <Terminal className="w-4 h-4" />
+                                )}
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
 
           {/* VPN & Firewall */}

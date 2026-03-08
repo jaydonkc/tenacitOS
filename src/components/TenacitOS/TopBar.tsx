@@ -139,7 +139,7 @@ export function TopBar() {
                   color: "var(--text-primary)",
                 }}
               >
-                C
+                J
               </span>
             </div>
             {/* Name */}
@@ -151,7 +151,7 @@ export function TopBar() {
                 color: "var(--text-secondary)",
               }}
             >
-              Carlos
+              Jaydon
             </span>
           </div>
         </div>
