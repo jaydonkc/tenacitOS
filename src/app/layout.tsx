@@ -43,7 +43,34 @@ export default function RootLayout({
   return (
     <html lang="en" className="dark">
       <head>
-        <script dangerouslySetInnerHTML={{__html:`if("serviceWorker"in navigator)navigator.serviceWorker.register("/sw.js")`}} />
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              if ("serviceWorker" in navigator) {
+                window.addEventListener("load", async () => {
+                  const resetKey = "mc-sw-reset-v2";
+
+                  try {
+                    const registrations = await navigator.serviceWorker.getRegistrations();
+                    await Promise.all(registrations.map((registration) => registration.unregister()));
+
+                    if ("caches" in window) {
+                      const cacheNames = await caches.keys();
+                      await Promise.all(cacheNames.map((cacheName) => caches.delete(cacheName)));
+                    }
+
+                    if (navigator.serviceWorker.controller && !sessionStorage.getItem(resetKey)) {
+                      sessionStorage.setItem(resetKey, "1");
+                      window.location.reload();
+                    }
+                  } catch (error) {
+                    console.error("Failed to reset service workers:", error);
+                  }
+                });
+              }
+            `,
+          }}
+        />
       </head>
       <body 
         className={`${inter.variable} ${sora.variable} ${jetbrainsMono.variable} font-sans`}
